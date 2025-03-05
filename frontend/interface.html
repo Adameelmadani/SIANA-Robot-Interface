@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIANA Robot Interface</title>
+    <link rel="stylesheet" href="styles/interface.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>SIANA Robot Interface</h1>
+            <div class="connection-status">
+                <span id="wifi-status" class="connected"><i class="fa-solid fa-wifi"></i> Connecté</span>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <div class="left-panel">
+                <div class="camera-feed">
+                    <h2>Caméra en direct</h2>
+                    <div class="camera-container">
+                        <img id="camera-stream" src="placeholder-camera.jpg" alt="Flux vidéo">
+                        <div class="luminosity">
+                            <i class="fa-solid fa-sun"></i> Luminosité: <span id="luminosity-value">85%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="controls">
+                    <h2>Pilotage</h2>
+                    <div class="control-buttons">
+                        <button id="forward" class="direction-btn"><i class="fa-solid fa-arrow-up"></i></button>
+                        <div class="middle-row">
+                            <button id="left" class="direction-btn"><i class="fa-solid fa-arrow-left"></i></button>
+                            <button id="stop" class="direction-btn"><i class="fa-solid fa-stop"></i></button>
+                            <button id="right" class="direction-btn"><i class="fa-solid fa-arrow-right"></i></button>
+                        </div>
+                        <button id="backward" class="direction-btn"><i class="fa-solid fa-arrow-down"></i></button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="right-panel">
+                <div class="status-panel">
+                    <div class="status-item battery">
+                        <i class="fa-solid fa-battery-full"></i>
+                        <div class="status-info">
+                            <h3>Batterie</h3>
+                            <div class="battery-meter">
+                                <div class="battery-level" style="width: 75%;"></div>
+                            </div>
+                            <span id="battery-percentage">75%</span>
+                        </div>
+                    </div>
+                    
+                    <div class="status-item">
+                        <i class="fa-solid fa-road"></i>
+                        <div class="status-info">
+                            <h3>Distance visitée</h3>
+                            <span id="distance-value">142 m</span>
+                        </div>
+                    </div>
+
+                    <div class="status-item">
+                        <i class="fa-solid fa-gauge-high"></i>
+                        <div class="status-info">
+                            <h3>Vitesse</h3>
+                            <span id="speed-value">5</span> <span>/ 20</span>
+                            <div class="speed-control">
+                                <input type="range" id="speed-slider" min="0" max="20" value="5">
+                                <div class="speed-buttons">
+                                    <button id="decrease-speed">-</button>
+                                    <button id="increase-speed">+</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="events-panel">
+                    <h2>Commandes</h2>
+                    <div class="action-buttons">
+                        <button id="start-btn" class="action-btn success"><i class="fa-solid fa-play"></i> Démarrer</button>
+                        <button id="stop-btn" class="action-btn danger"><i class="fa-solid fa-power-off"></i> Arrêter</button>
+                    </div>
+                </div>
+
+                <div class="defects-panel">
+                    <h2>Défauts</h2>
+                    <ul id="defects-list">
+                        <li class="defect warning"><i class="fa-solid fa-exclamation-triangle"></i> Batterie faible (25%)</li>
+                        <li class="defect critical"><i class="fa-solid fa-times-circle"></i> Capteur ultrason avant défaillant</li>
+                        <li class="defect warning"><i class="fa-solid fa-exclamation-triangle"></i> Connexion Wi-Fi instable</li>
+                    </ul>
+                </div>
+
+                <div class="maintenance-panel">
+                    <h2>Maintenance</h2>
+                    <div class="component-status">
+                        <div class="component">
+                            <span class="component-name">Moteur gauche:</span>
+                            <span class="status good">Bon état</span>
+                        </div>
+                        <div class="component">
+                            <span class="component-name">Moteur droit:</span>
+                            <span class="status warning">Vérification recommandée</span>
+                        </div>
+                        <div class="component">
+                            <span class="component-name">Caméra principale:</span>
+                            <span class="status good">Bon état</span>
+                        </div>
+                        <div class="component">
+                            <span class="component-name">Capteurs ultrason:</span>
+                            <span class="status critical">Maintenance requise</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="history-panel">
+            <h2>Historique des opérations</h2>
+            <div class="history-container">
+                <table id="operations-history">
+                    <thead>
+                        <tr>
+                            <th>Heure</th>
+                            <th>Événement</th>
+                            <th>Détails</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>14:32:15</td>
+                            <td>Démarrage</td>
+                            <td>Robot initialisé avec succès</td>
+                        </tr>
+                        <tr>
+                            <td>14:35:22</td>
+                            <td>Inspection</td>
+                            <td>Début d'inspection de la rame TGV #4587</td>
+                        </tr>
+                        <tr>
+                            <td>14:42:18</td>
+                            <td>Alerte</td>
+                            <td>Détection d'anomalie à la position 87m</td>
+                        </tr>
+                        <tr>
+                            <td>14:45:03</td>
+                            <td>Changement vitesse</td>
+                            <td>Vitesse modifiée de 10 à 5</td>
+                        </tr>
+                        <tr>
+                            <td>14:47:56</td>
+                            <td>Défaut</td>
+                            <td>Capteur ultrason avant défaillant</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="scripts/interface.js"></script>
+</body>
+</html>
