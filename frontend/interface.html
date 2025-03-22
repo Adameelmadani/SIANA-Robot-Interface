@@ -19,9 +19,22 @@
         <div class="main-content">
             <div class="left-panel">
                 <div class="camera-feed">
-                    <h2>Caméra en direct</h2>
+                    <h2>Détection d'objets</h2>
                     <div class="camera-container">
-                        <img id="camera-stream" src="placeholder-camera.jpg" alt="Flux vidéo">
+                        <div class="image-upload-container">
+                            <form id="image-upload-form" enctype="multipart/form-data">
+                                <div class="upload-area" id="upload-area">
+                                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                                    <p>Glissez une image ou cliquez pour choisir</p>
+                                    <input type="file" id="image-input" accept="image/*" hidden>
+                                </div>
+                                <button type="submit" id="process-image-btn" disabled>Analyser l'image</button>
+                            </form>
+                            <div class="result-container" id="result-container" style="display: none;">
+                                <img id="result-image" src="" alt="Résultat de l'analyse">
+                                <button id="new-image-btn">Nouvelle image</button>
+                            </div>
+                        </div>
                         <div class="luminosity">
                             <i class="fa-solid fa-sun"></i> Luminosité: <span id="luminosity-value">85%</span>
                         </div>

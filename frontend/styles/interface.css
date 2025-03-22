@@ -352,3 +352,83 @@ th {
         width: 100%;
     }
 }
+
+/* Image upload styles */
+.image-upload-container {
+    width: 100%;
+    height: 350px;
+}
+
+.upload-area {
+    width: 100%;
+    height: 300px;
+    border: 2px dashed var(--secondary-color);
+    border-radius: 5px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    background-color: rgba(52, 152, 219, 0.1);
+}
+
+.upload-area:hover {
+    background-color: rgba(52, 152, 219, 0.2);
+}
+
+.upload-area i {
+    font-size: 48px;
+    margin-bottom: 10px;
+    color: var(--secondary-color);
+}
+
+#process-image-btn {
+    margin-top: 10px;
+    width: 100%;
+    padding: 10px;
+    background-color: var(--secondary-color);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.3s;
+}
+
+#process-image-btn:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+#process-image-btn:hover:not(:disabled) {
+    background-color: var(--primary-color);
+}
+
+.result-container {
+    width: 100%;
+    height: 350px;
+}
+
+#result-image {
+    width: 100%;
+    height: 300px;
+    object-fit: contain;
+    border-radius: 5px;
+}
+
+#new-image-btn {
+    margin-top: 10px;
+    width: 100%;
+    padding: 10px;
+    background-color: var(--secondary-color);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+#new-image-btn:hover {
+    background-color: var(--primary-color);
+}

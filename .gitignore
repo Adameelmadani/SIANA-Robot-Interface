@@ -1,0 +1,26 @@
+# Node.js dependencies
+node_modules/
+
+# Temporary directories
+uploads/
+outputs/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Editor directories and files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store

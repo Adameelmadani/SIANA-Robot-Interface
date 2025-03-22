@@ -115,8 +115,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (batteryLevel < 20) {
                 document.querySelector('.battery-level').style.backgroundColor = 'var(--danger-color)';
                 
-                // Add a defect alert if battery is very low
-                if (batteryLevel < 15 && document.querySelectorAll('.defect:contains("Batterie")').length === 0) {
+                // Fix: :contains is jQuery selector, not native JavaScript
+                // Check if we already have a battery-related defect
+                const batteryDefects = Array.from(document.querySelectorAll('.defect')).some(
+                    el => el.textContent.includes('Batterie')
+                );
+                
+                if (batteryLevel < 15 && !batteryDefects) {
                     addDefect('Batterie critique', 'critical');
                 }
             } else if (batteryLevel < 40) {
@@ -201,4 +206,181 @@ document.addEventListener('DOMContentLoaded', () => {
             addDefect(randomDefect.message, randomDefect.level);
         }
     }, 60000); // Check every minute
+
+    // Image upload handling
+    const uploadArea = document.getElementById('upload-area');
+    const imageInput = document.getElementById('image-input');
+    const processImageBtn = document.getElementById('process-image-btn');
+    const imageUploadForm = document.getElementById('image-upload-form');
+    const resultContainer = document.getElementById('result-container');
+    const resultImage = document.getElementById('result-image');
+    const newImageBtn = document.getElementById('new-image-btn');
+
+    // Click on upload area to trigger file input
+    uploadArea.addEventListener('click', () => {
+        imageInput.click();
+    });
+
+    // Drag and drop functionality
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        // Fix: var() is a CSS function, not JavaScript
+        uploadArea.style.borderColor = 'var(--primary-color)';
+        uploadArea.style.backgroundColor = 'rgba(52, 152, 219, 0.3)';
+    });
+
+    uploadArea.addEventListener('dragleave', () => {
+        // Fix: var() is a CSS function, not JavaScript
+        uploadArea.style.borderColor = 'var(--secondary-color)';
+        uploadArea.style.backgroundColor = 'rgba(52, 152, 219, 0.1)';
+    });
+
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.style.borderColor = 'var(--secondary-color)';
+        uploadArea.style.backgroundColor = 'rgba(52, 152, 219, 0.1)';
+        
+        if (e.dataTransfer.files.length) {
+            imageInput.files = e.dataTransfer.files;
+            handleFileSelect();
+        }
+    });
+
+    // File selection handler
+    imageInput.addEventListener('change', handleFileSelect);
+
+    function handleFileSelect() {
+        if (imageInput.files.length > 0) {
+            const file = imageInput.files[0];
+            
+            // Check if the file is an image
+            if (!file.type.match('image.*')) {
+                alert('Veuillez sélectionner une image valide.');
+                return;
+            }
+            
+            // Preview the image in the upload area
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                uploadArea.innerHTML = `
+                    <img src="${e.target.result}" style="max-width: 100%; max-height: 280px; object-fit: contain;">
+                `;
+            };
+            reader.readAsDataURL(file);
+            
+            // Enable the process button
+            processImageBtn.disabled = false;
+        }
+    }
+
+    // Form submission handler
+    imageUploadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        if (!imageInput.files.length) return;
+        
+        const formData = new FormData();
+        formData.append('image', imageInput.files[0]);
+        
+        // Show loading state
+        processImageBtn.disabled = true;
+        processImageBtn.textContent = 'Analyse en cours...';
+        
+        try {
+            // Use the correct backend URL - modify this to match your Node.js backend location
+            const backendUrl = 'http://localhost:3000';
+            console.log('Sending request to:', `${backendUrl}/api/process-image`);
+            
+            // Create an AbortController for timeout functionality
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
+            
+            // Add progress indicator
+            let dots = '';
+            let progressInterval = setInterval(() => {
+                dots = dots.length < 3 ? dots + '.' : '';
+                processImageBtn.textContent = `Analyse en cours${dots}`;
+            }, 500);
+            
+            try {
+                const response = await fetch(`${backendUrl}/api/process-image`, {
+                    method: 'POST',
+                    body: formData,
+                    signal: controller.signal
+                });
+                
+                // Clear the timeout since the request completed
+                clearTimeout(timeoutId);
+                clearInterval(progressInterval);
+                
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Server response:', errorText);
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                
+                // Safely parse JSON response
+                let data;
+                try {
+                    data = await response.json();
+                    console.log('Data received successfully');
+                } catch (jsonError) {
+                    console.error('JSON parsing error:', jsonError);
+                    throw new Error('Failed to parse server response');
+                }
+                
+                if (!data || !data.processedImage) {
+                    console.error('Invalid data received:', data);
+                    throw new Error('Invalid data received from server');
+                }
+                
+                console.log('Displaying processed image');
+                // Show the result
+                resultImage.src = `data:image/jpeg;base64,${data.processedImage}`;
+                imageUploadForm.style.display = 'none';
+                resultContainer.style.display = 'block';
+                
+                // Log the operation
+                logOperation('Analyse d\'image', 'Image traitée avec succès');
+                
+            } catch (fetchError) {
+                clearInterval(progressInterval);
+                if (fetchError.name === 'AbortError') {
+                    console.error('Request timed out after 30 seconds');
+                    throw new Error('Le traitement de l\'image a pris trop de temps (30 secondes). Veuillez réessayer.');
+                }
+                throw fetchError;
+            }
+            
+        } catch (error) {
+            console.error('Error processing image:', error);
+            alert(`Erreur lors du traitement de l'image: ${error.message}`);
+            
+            // Log the error
+            addDefect('Échec du traitement d\'image', 'critical');
+        } finally {
+            // Reset button state
+            processImageBtn.disabled = false;
+            processImageBtn.textContent = 'Analyser l\'image';
+        }
+    });
+
+    // New image button handler
+    newImageBtn.addEventListener('click', () => {
+        // Reset the form
+        imageUploadForm.reset();
+        uploadArea.innerHTML = `
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            <p>Glissez une image ou cliquez pour choisir</p>
+            <input type="file" id="image-input" accept="image/*" hidden>
+        `;
+        imageInput.value = '';
+        processImageBtn.disabled = true;
+        
+        // Switch views
+        resultContainer.style.display = 'none';
+        imageUploadForm.style.display = 'block';
+    });
 });
