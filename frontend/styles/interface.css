@@ -432,3 +432,54 @@ th {
 #new-image-btn:hover {
     background-color: var(--primary-color);
 }
+
+/* Detection mode selector styles */
+.detection-mode-selector {
+    margin-bottom: 15px;
+}
+
+.mode-toggle {
+    display: flex;
+    background-color: var(--secondary-color-light);
+    border-radius: 5px;
+    padding: 3px;
+    width: fit-content;
+    margin: 0 auto;
+}
+
+.mode-toggle input[type="radio"] {
+    display: none;
+}
+
+.mode-toggle label {
+    padding: 8px 15px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.3s;
+}
+
+.mode-toggle input[type="radio"]:checked + label {
+    background-color: var(--secondary-color);
+    color: white;
+}
+
+.coming-soon-message {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 300px;
+    color: var(--secondary-color);
+    background-color: rgba(52, 152, 219, 0.1);
+    border-radius: 5px;
+    border: 2px dashed var(--secondary-color);
+}
+
+.coming-soon-message i {
+    font-size: 48px;
+    margin-bottom: 15px;
+}
+
+.coming-soon-message p {
+    font-size: 18px;
+}

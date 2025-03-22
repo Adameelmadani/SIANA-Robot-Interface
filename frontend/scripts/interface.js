@@ -288,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         try {
             // Use the correct backend URL - modify this to match your Node.js backend location
-            const backendUrl = 'http://sianarobot.intellipow.me:3000';
+            const backendUrl = 'http://localhost:3000';
             console.log('Sending request to:', `${backendUrl}/api/process-image`);
             
             // Create an AbortController for timeout functionality
@@ -382,5 +382,25 @@ document.addEventListener('DOMContentLoaded', () => {
         // Switch views
         resultContainer.style.display = 'none';
         imageUploadForm.style.display = 'block';
+    });
+
+    // Mode selection for detection
+    const imageModeRadio = document.getElementById('image-mode');
+    const realtimeModeRadio = document.getElementById('realtime-mode');
+    const imageDetectionContainer = document.getElementById('image-detection-container');
+    const realtimeDetectionContainer = document.getElementById('realtime-detection-container');
+
+    imageModeRadio.addEventListener('change', function() {
+        if (this.checked) {
+            imageDetectionContainer.style.display = 'block';
+            realtimeDetectionContainer.style.display = 'none';
+        }
+    });
+
+    realtimeModeRadio.addEventListener('change', function() {
+        if (this.checked) {
+            imageDetectionContainer.style.display = 'none';
+            realtimeDetectionContainer.style.display = 'block';
+        }
     });
 });
