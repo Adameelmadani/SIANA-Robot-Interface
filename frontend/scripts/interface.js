@@ -288,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
         
         try {
             // Use the correct backend URL - modify this to match your Node.js backend location
-            const backendUrl = 'http://localhost:3000';
+            const backendUrl = 'http://sianarobot.intellipow.me:3000';
             console.log('Sending request to:', `${backendUrl}/api/process-image`);
             
             // Create an AbortController for timeout functionality
