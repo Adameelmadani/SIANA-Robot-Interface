@@ -1,4 +1,45 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // WebSocket connection
+    let socket = null;
+    
+    // Connect to server
+    function connectWebSocket() {
+        // Use the location of the current page to determine WebSocket URL
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/robot`;
+        
+        console.log(`Connecting to WebSocket at ${wsUrl}`);
+        socket = new WebSocket(wsUrl);
+        
+        socket.onopen = () => {
+            console.log('WebSocket connection established');
+            document.getElementById('wifi-status').className = 'connected';
+            document.getElementById('wifi-status').innerHTML = '<i class="fa-solid fa-wifi"></i> Connecté';
+        };
+        
+        socket.onclose = () => {
+            console.log('WebSocket connection closed');
+            document.getElementById('wifi-status').className = 'disconnected';
+            document.getElementById('wifi-status').innerHTML = '<i class="fa-solid fa-wifi"></i> Déconnecté';
+            
+            // Try to reconnect after a delay
+            setTimeout(connectWebSocket, 5000);
+        };
+        
+        socket.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            addDefect('Erreur de connexion WebSocket', 'critical');
+        };
+        
+        socket.onmessage = (event) => {
+            console.log('Message from server:', event.data);
+            // Handle incoming messages if needed
+        };
+    }
+    
+    // Connect on page load
+    connectWebSocket();
+
     // Speed control
     const speedSlider = document.getElementById('speed-slider');
     const speedValue = document.getElementById('speed-value');
@@ -50,13 +91,22 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // Updated controlRobot function to use WebSockets
     function controlRobot(direction, isActive) {
-        if (isActive) {
-            console.log(`Moving robot: ${direction}`);
-            logOperation(`Mouvement`, `Direction: ${direction}`);
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            console.log(`Sending robot command: ${direction} - ${isActive}`);
             
-            // Here you would send commands to the robot
-            // For example via WebSockets or a REST API
+            const message = {
+                type: 'control',
+                direction: direction,
+                isActive: isActive
+            };
+            
+            socket.send(JSON.stringify(message));
+            logOperation(`Mouvement`, `Direction: ${direction}`);
+        } else {
+            console.error('WebSocket is not connected');
+            addDefect('Commande non envoyée: WebSocket déconnecté', 'critical');
         }
     }
 
@@ -68,18 +118,38 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('Robot started');
         logOperation('Démarrage', 'Robot initialisé');
         
-        // Simulate connection status
-        document.getElementById('wifi-status').className = 'connected';
-        document.getElementById('wifi-status').innerHTML = '<i class="fa-solid fa-wifi"></i> Connecté';
+        // Ensure WebSocket is connected
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            connectWebSocket();
+        }
+        
+        // Send start command via WebSocket
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            const message = {
+                type: 'command',
+                action: 'start'
+            };
+            socket.send(JSON.stringify(message));
+        }
     });
     
     stopBtn.addEventListener('click', () => {
         console.log('Robot stopped');
         logOperation('Arrêt', 'Robot arrêté');
         
-        // Simulate disconnection status
-        document.getElementById('wifi-status').className = 'disconnected';
-        document.getElementById('wifi-status').innerHTML = '<i class="fa-solid fa-wifi"></i> Déconnecté';
+        // Send stop command via WebSocket
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            const message = {
+                type: 'command',
+                action: 'stop'
+            };
+            socket.send(JSON.stringify(message));
+        }
+        
+        // Disconnect WebSocket
+        if (socket) {
+            socket.close();
+        }
     });
 
     // Log operations to the history table
@@ -156,6 +226,18 @@ document.addEventListener('DOMContentLoaded', () => {
         logOperation('Défaut', message);
     }
 
+    // Instead of simulating ping, use real WebSocket connection status
+    function monitorWebSocketConnection() {
+        setInterval(() => {
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                // WebSocket is not connected, try to reconnect
+                if (!socket || socket.readyState === WebSocket.CLOSED) {
+                    connectWebSocket();
+                }
+            }
+        }, 10000); // Check every 10 seconds
+    }
+
     // Random simulation of sensor values
     function simulateSensors() {
         // Luminosity simulation
@@ -169,28 +251,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 15000); // Update every 15 seconds
     }
 
-    // Ping simulation
-    function simulatePing() {
-        setInterval(() => {
-            const connected = Math.random() > 0.1; // 10% chance of disconnection
-            const wifiStatus = document.getElementById('wifi-status');
-            
-            if (connected) {
-                wifiStatus.className = 'connected';
-                wifiStatus.innerHTML = '<i class="fa-solid fa-wifi"></i> Connecté';
-            } else {
-                wifiStatus.className = 'disconnected';
-                wifiStatus.innerHTML = '<i class="fa-solid fa-wifi"></i> Déconnecté';
-                addDefect('Connexion Wi-Fi perdue', 'warning');
-            }
-        }, 20000); // Check every 20 seconds
-    }
-
     // Start simulations
     monitorBattery();
     monitorDistance();
     simulateSensors();
-    simulatePing();
+    monitorWebSocketConnection();
 
     // For demonstration purposes, let's add some random defects occasionally
     setInterval(() => {

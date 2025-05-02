@@ -3,10 +3,60 @@ const multer = require('multer');
 const path = require('path');
 const { spawn } = require('child_process');
 const fs = require('fs');
-const cors = require('cors'); // You'll need to install this: npm install cors
+const cors = require('cors');
+const http = require('http');
+const WebSocket = require('ws');
 
 const app = express();
+const server = http.createServer(app);
 const port = process.env.PORT || 3000;
+
+// WebSocket servers
+const wss = new WebSocket.Server({ server, path: '/robot' }); // Frontend connections
+const piWss = new WebSocket.Server({ server, path: '/pi' }); // Raspberry Pi connection
+
+// Store connections
+let frontendConnections = new Set();
+let piConnection = null;
+
+// Handle frontend WebSocket connections
+wss.on('connection', (ws) => {
+    console.log('Frontend client connected');
+    frontendConnections.add(ws);
+    
+    ws.on('message', (message) => {
+        // Forward control commands to Raspberry Pi
+        try {
+            const data = JSON.parse(message);
+            if (data.type === 'control' && piConnection && piConnection.readyState === WebSocket.OPEN) {
+                piConnection.send(JSON.stringify(data));
+                console.log(`Command forwarded to Pi: ${data.direction} - ${data.isActive}`);
+            }
+        } catch (e) {
+            console.error('Error parsing message:', e);
+        }
+    });
+    
+    ws.on('close', () => {
+        console.log('Frontend client disconnected');
+        frontendConnections.delete(ws);
+    });
+});
+
+// Handle Raspberry Pi WebSocket connection
+piWss.on('connection', (ws) => {
+    console.log('Raspberry Pi connected');
+    piConnection = ws;
+    
+    ws.on('message', (message) => {
+        console.log('Message from Pi:', message.toString());
+    });
+    
+    ws.on('close', () => {
+        console.log('Raspberry Pi disconnected');
+        piConnection = null;
+    });
+});
 
 // Enable CORS for development
 app.use(cors());
@@ -162,6 +212,8 @@ app.get('*', (req, res) => {
 });
 
 // Start the server
-app.listen(port, () => {
+server.listen(port, () => {
     console.log(`Server is running on http://localhost:${port}`);
+    console.log(`WebSocket server is running on ws://localhost:${port}/robot`);
+    console.log(`Raspberry Pi WebSocket server is running on ws://localhost:${port}/pi`);
 });
