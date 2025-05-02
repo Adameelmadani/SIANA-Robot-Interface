@@ -5,9 +5,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Connect to server
     function connectWebSocket() {
         // Use the location of the current page to determine WebSocket URL
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/robot`;
-        
+        const wsUrl = `ws://192.168.12.1:3000/robot`;
+
         console.log(`Connecting to WebSocket at ${wsUrl}`);
         socket = new WebSocket(wsUrl);
         
