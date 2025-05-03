@@ -7,99 +7,108 @@ const cors = require('cors');
 const http = require('http');
 const WebSocket = require('ws');
 
-let piServerUrl = 'ws://192.168.12.116'; // Default Pi server URL
-
 const app = express();
 const server = http.createServer(app);
 const port = process.env.PORT || 3000;
 
-// WebSocket server for frontend connections
+// WebSocket server for both frontend and Pi connections
 const wss = new WebSocket.Server({ server, path: '/robot' }); 
 
 // Store connections
 let frontendConnections = new Set();
 let piConnection = null;
 
-// Function to connect to the Raspberry Pi WebSocket server
-function connectToPi() {
-    console.log(`Connecting to Raspberry Pi at ${piServerUrl}...`);
-    const ws = new WebSocket(piServerUrl);
+// Handle WebSocket connections
+wss.on('connection', (ws, req) => {
+    // The connection is initially unknown
+    let isRaspberryPi = false;
     
-    ws.on('open', () => {
-        console.log(`Connected to Raspberry Pi at ${piServerUrl}`);
-        piConnection = ws;
-        
-        // Notify all connected frontend clients
-        frontendConnections.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify({ type: 'status', connected: true }));
-            }
-        });
-    });
+    console.log('New WebSocket connection from:', req.socket.remoteAddress);
     
     ws.on('message', (message) => {
-        console.log('Message from Pi:', message.toString());
-        
-        // Forward messages to all connected frontend clients
-        frontendConnections.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(message);
-            }
-        });
-    });
-    
-    ws.on('close', () => {
-        console.log('Disconnected from Raspberry Pi');
-        piConnection = null;
-        
-        // Notify all connected frontend clients
-        frontendConnections.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify({ type: 'status', connected: false }));
-            }
-        });
-        
-        // Try to reconnect after a delay
-        setTimeout(connectToPi, 5000);
-    });
-    
-    ws.on('error', (error) => {
-        console.error('Error connecting to Raspberry Pi:', error.message);
-    });
-}
-
-// Handle frontend WebSocket connections
-wss.on('connection', (ws) => {
-    console.log('Frontend client connected');
-    frontendConnections.add(ws);
-    
-    // Send initial connection status
-    ws.send(JSON.stringify({ 
-        type: 'status', 
-        connected: piConnection !== null && piConnection.readyState === WebSocket.OPEN 
-    }));
-    
-    ws.on('message', (message) => {
-        // Forward control commands to Raspberry Pi
         try {
             const data = JSON.parse(message);
-            if (data.type === 'control' && piConnection && piConnection.readyState === WebSocket.OPEN) {
-                piConnection.send(JSON.stringify(data));
-                console.log(`Command forwarded to Pi: ${data.direction} - ${data.isActive}`);
+            
+            // Identify if this is the Raspberry Pi based on the initial message
+            if (data.type === 'identity' && data.device === 'raspberry_pi') {
+                console.log('Raspberry Pi identified and connected');
+                
+                // Store this connection as the Pi
+                piConnection = ws;
+                isRaspberryPi = true;
+                
+                // Notify all frontend clients that Pi is connected
+                frontendConnections.forEach(client => {
+                    if (client.readyState === WebSocket.OPEN) {
+                        client.send(JSON.stringify({ 
+                            type: 'status', 
+                            connected: true 
+                        }));
+                    }
+                });
+                return;
             }
+            
+            // Handle control messages from frontend to Pi
+            if (!isRaspberryPi && data.type === 'control') {
+                if (piConnection && piConnection.readyState === WebSocket.OPEN) {
+                    piConnection.send(JSON.stringify(data));
+                    console.log(`Command forwarded to Pi: ${data.direction} - ${data.isActive}`);
+                } else {
+                    console.log('Cannot forward command: Pi not connected');
+                    // Inform the client that Pi isn't connected
+                    ws.send(JSON.stringify({
+                        type: 'error',
+                        message: 'Raspberry Pi is not connected'
+                    }));
+                }
+            }
+            
+            // Forward Pi messages to all frontend clients
+            if (isRaspberryPi) {
+                frontendConnections.forEach(client => {
+                    if (client.readyState === WebSocket.OPEN) {
+                        client.send(message);
+                    }
+                });
+            }
+            
         } catch (e) {
             console.error('Error parsing message:', e);
         }
     });
     
     ws.on('close', () => {
-        console.log('Frontend client disconnected');
-        frontendConnections.delete(ws);
+        if (isRaspberryPi) {
+            console.log('Raspberry Pi disconnected');
+            piConnection = null;
+            
+            // Notify all frontend clients that Pi is disconnected
+            frontendConnections.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify({ 
+                        type: 'status', 
+                        connected: false 
+                    }));
+                }
+            });
+        } else {
+            console.log('Frontend client disconnected');
+            frontendConnections.delete(ws);
+        }
     });
+    
+    // If not a Pi connection, add to frontend connections
+    if (!isRaspberryPi) {
+        frontendConnections.add(ws);
+        
+        // Send initial Pi connection status
+        ws.send(JSON.stringify({ 
+            type: 'status', 
+            connected: piConnection !== null && piConnection.readyState === WebSocket.OPEN 
+        }));
+    }
 });
-
-// Connect to the Raspberry Pi WebSocket server
-connectToPi();
 
 // Enable CORS for development
 app.use(cors());
@@ -258,5 +267,4 @@ app.get('*', (req, res) => {
 server.listen(port, () => {
     console.log(`Server is running on http://localhost:${port}`);
     console.log(`WebSocket server is running on ws://localhost:${port}/robot`);
-    console.log(`Connecting to Raspberry Pi WebSocket server at ${piServerUrl}`);
 });
