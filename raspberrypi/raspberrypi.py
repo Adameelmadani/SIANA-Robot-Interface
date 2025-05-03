@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 # WebSocket server URL (replace with your actual server address)
-SERVER_URL = "ws://192.168.12.1:3000/pi"
+SERVER_URL = "ws://192.168.12.1:3000/robot"
 
 # Robot movement functions
 def move_robot(direction, is_active):

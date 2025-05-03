@@ -7,15 +7,7 @@ const cors = require('cors');
 const http = require('http');
 const WebSocket = require('ws');
 
-// Parse command line arguments
-let piServerUrl = 'ws://localhost:8080'; // Default Pi server URL
-process.argv.forEach((arg, index) => {
-  if (arg === '--pi-server' || arg === '-s') {
-    piServerUrl = process.argv[index + 1];
-  } else if (arg.startsWith('--pi-server=')) {
-    piServerUrl = arg.split('=')[1];
-  }
-});
+let piServerUrl = 'ws://192.168.12.116'; // Default Pi server URL
 
 const app = express();
 const server = http.createServer(app);
