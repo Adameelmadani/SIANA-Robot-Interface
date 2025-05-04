@@ -14,6 +14,9 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('WebSocket connection established');
             document.getElementById('wifi-status').className = 'connected';
             document.getElementById('wifi-status').innerHTML = '<i class="fa-solid fa-wifi"></i> Connecté';
+            
+            // Request camera stream
+            requestCameraStream();
         };
         
         socket.onclose = () => {
@@ -31,9 +34,61 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         
         socket.onmessage = (event) => {
-            console.log('Message from server:', event.data);
-            // Handle incoming messages if needed
+            try {
+                const message = JSON.parse(event.data);
+                
+                // Handle camera frame data
+                if (message.type === 'camera_frame') {
+                    updateCameraFrame(message.data);
+                }
+                
+                // Handle stream status updates
+                if (message.type === 'stream_status') {
+                    updateStreamStatus(message.connected);
+                }
+                
+                // Handle other messages as before
+                console.log('Message from server:', message);
+            } catch (e) {
+                console.error('Error parsing message from server:', e);
+            }
         };
+    }
+    
+    // Request camera stream from server
+    function requestCameraStream() {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            console.log('Requesting camera stream');
+            socket.send(JSON.stringify({
+                type: 'stream_request'
+            }));
+        }
+    }
+    
+    // Update camera frame with received data
+    function updateCameraFrame(base64Data) {
+        const img = document.getElementById('camera-stream');
+        if (img) {
+            img.src = `data:image/jpeg;base64,${base64Data}`;
+        }
+    }
+    
+    // Update stream status in UI
+    function updateStreamStatus(connected) {
+        const cameraStream = document.getElementById('camera-stream');
+        const streamStatus = document.getElementById('stream-status');
+        
+        if (streamStatus) {
+            if (connected) {
+                streamStatus.textContent = 'Flux vidéo actif';
+                streamStatus.className = 'stream-status connected';
+                cameraStream.style.opacity = '1';
+            } else {
+                streamStatus.textContent = 'Flux vidéo déconnecté';
+                streamStatus.className = 'stream-status disconnected';
+                cameraStream.style.opacity = '0.5';
+            }
+        }
     }
     
     // Connect on page load

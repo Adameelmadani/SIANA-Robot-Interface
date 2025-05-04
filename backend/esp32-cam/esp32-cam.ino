@@ -1,7 +1,7 @@
 #include "esp_camera.h"
 #include "Arduino.h"
-#include <WebServer.h>
 #include <WiFi.h>
+#include <esp_http_server.h>
 
 // Camera model pins (for ESP32-CAM AiThinker)
 #define PWDN_GPIO_NUM     32
@@ -24,8 +24,7 @@
 #define AP_SSID "Hotspot"
 #define AP_PASS "12345678"
 
-WebServer server(80);
-
+// Function to initialize the camera
 bool initCamera() {
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -48,53 +47,97 @@ bool initCamera() {
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
-  
-  // Set resolution 1024x768
-  config.frame_size = FRAMESIZE_XGA;
-  config.jpeg_quality = 80; // Lower value means higher quality
-  config.fb_count = 2;
-  
+
+  // Set frame size and quality
+  if (psramFound()) {
+    config.frame_size = FRAMESIZE_UXGA; // 1600x1200
+    config.jpeg_quality = 10;
+    config.fb_count = 2;
+  } else {
+    config.frame_size = FRAMESIZE_SVGA; // 800x600
+    config.jpeg_quality = 12;
+    config.fb_count = 1;
+  }
+
   // Initialize the camera
   esp_err_t err = esp_camera_init(&config);
-  return (err == ESP_OK);
+  if (err != ESP_OK) {
+    Serial.printf("Camera init failed with error 0x%x", err);
+    return false;
+  }
+  return true;
 }
 
-void handleCapture() {
-  camera_fb_t *fb = esp_camera_fb_get();
-  if (!fb) {
-    server.send(500, "", "");
-    return;
+// MJPEG stream handler
+esp_err_t streamHandler(httpd_req_t *req) {
+  camera_fb_t *fb = NULL;
+  char *partHeader = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
+  static char buffer[64];
+
+  // Set HTTP response headers for MJPEG
+  httpd_resp_set_type(req, "multipart/x-mixed-replace; boundary=frame");
+
+  while (true) {
+    fb = esp_camera_fb_get();
+    if (!fb) {
+      Serial.println("Camera capture failed");
+      httpd_resp_send_500(req);
+      return ESP_FAIL;
+    }
+
+    // Send frame boundary
+    httpd_resp_send_chunk(req, "--frame\r\n", strlen("--frame\r\n"));
+
+    // Send frame headers
+    int headerLen = snprintf(buffer, sizeof(buffer), partHeader, fb->len);
+    httpd_resp_send_chunk(req, buffer, headerLen);
+
+    // Send frame data
+    httpd_resp_send_chunk(req, (const char *)fb->buf, fb->len);
+
+    // Release the frame buffer
+    esp_camera_fb_return(fb);
   }
-  server.setContentLength(fb->len);
-  server.send(200, "image/jpeg");
-  WiFiClient client = server.client();
-  client.write(fb->buf, fb->len);
-  esp_camera_fb_return(fb);
+
+  return ESP_OK;
+}
+
+// Start the HTTP server
+void startCameraServer() {
+  httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+  httpd_handle_t server = NULL;
+
+  // Start the HTTP server
+  if (httpd_start(&server, &config) == ESP_OK) {
+    httpd_uri_t streamUri = {
+      .uri = "/stream",
+      .method = HTTP_GET,
+      .handler = streamHandler,
+      .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &streamUri);
+  }
 }
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("Initializing camera...");
-  
+
+  // Initialize the camera
   if (!initCamera()) {
-    Serial.println("Camera initialization failed!");
-    return;
+    Serial.println("Camera initialization failed");
+    while (1);
   }
-  
-  Serial.println("Camera initialized successfully");
-  
+
+  // Start Wi-Fi in Access Point mode
   WiFi.softAP(AP_SSID, AP_PASS);
-  
-  IPAddress IP = WiFi.softAPIP();
-  Serial.print("AP IP address: ");
-  Serial.println(IP);
-  
-  server.on("/capture.jpg", handleCapture);
-  server.begin();
-  
-  Serial.println("Server started");
+  Serial.println("Wi-Fi started");
+  Serial.print("Access Point IP: ");
+  Serial.println(WiFi.softAPIP());
+
+  // Start the camera server
+  startCameraServer();
 }
 
 void loop() {
-  server.handleClient();
+  // Nothing to do here, the server handles everything
 }

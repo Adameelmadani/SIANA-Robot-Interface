@@ -100,6 +100,41 @@ h1, h2, h3 {
     margin-top: 10px;
 }
 
+.stream-container {
+    position: relative;
+    width: 100%;
+    height: 350px;
+    background-color: #333;
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+#camera-stream {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transition: opacity 0.3s ease;
+}
+
+.stream-status {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    padding: 5px 10px;
+    border-radius: 20px;
+    color: white;
+    font-size: 14px;
+    z-index: 2;
+}
+
+.stream-status.connected {
+    background-color: var(--success-color);
+}
+
+.stream-status.disconnected {
+    background-color: var(--danger-color);
+}
+
 #camera-stream {
     width: 100%;
     height: 350px;

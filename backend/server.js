@@ -7,6 +7,9 @@ const cors = require('cors');
 const http = require('http');
 const WebSocket = require('ws');
 
+// Import our camera stream module
+const cameraStream = require('./esp32-cam/camera-rec');
+
 const app = express();
 const server = http.createServer(app);
 const port = process.env.PORT || 3000;
@@ -46,6 +49,11 @@ wss.on('connection', (ws, req) => {
                         }));
                     }
                 });
+                
+                // Try to connect to the camera stream
+                const piIp = req.socket.remoteAddress.replace(/^::ffff:/, '');
+                cameraStream.connect(piIp);
+                
                 return;
             }
             
@@ -60,6 +68,27 @@ wss.on('connection', (ws, req) => {
                     ws.send(JSON.stringify({
                         type: 'error',
                         message: 'Raspberry Pi is not connected'
+                    }));
+                }
+            }
+
+            // Handle stream request from frontend
+            if (!isRaspberryPi && data.type === 'stream_request') {
+                if (cameraStream.isStreamConnected()) {
+                    ws.cameraStreamEnabled = true;
+                    console.log('Camera stream requested by client. Stream is active.');
+                    
+                    // Send initial confirmation
+                    ws.send(JSON.stringify({
+                        type: 'stream_status',
+                        connected: true
+                    }));
+                } else {
+                    console.log('Camera stream requested but camera is not connected');
+                    ws.send(JSON.stringify({
+                        type: 'stream_status',
+                        connected: false,
+                        message: 'Camera is not connected'
                     }));
                 }
             }
@@ -108,6 +137,48 @@ wss.on('connection', (ws, req) => {
             connected: piConnection !== null && piConnection.readyState === WebSocket.OPEN 
         }));
     }
+});
+
+// Camera stream events
+cameraStream.on('frame', (frameBuffer) => {
+    // Convert frame buffer to base64
+    const frameBase64 = frameBuffer.toString('base64');
+    
+    // Send frame to all connected frontend clients that requested the stream
+    frontendConnections.forEach(client => {
+        if (client.readyState === WebSocket.OPEN && client.cameraStreamEnabled) {
+            client.send(JSON.stringify({
+                type: 'camera_frame',
+                data: frameBase64
+            }));
+        }
+    });
+});
+
+cameraStream.on('connected', () => {
+    console.log('Camera stream connected successfully');
+    // Notify all frontend clients
+    frontendConnections.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+                type: 'stream_status',
+                connected: true
+            }));
+        }
+    });
+});
+
+cameraStream.on('disconnected', () => {
+    console.log('Camera stream disconnected');
+    // Notify all frontend clients
+    frontendConnections.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+                type: 'stream_status',
+                connected: false
+            }));
+        }
+    });
 });
 
 // Enable CORS for development
