@@ -20,11 +20,15 @@ let cameraConnected = false;
 let lastCameraActivity = Date.now();
 const connectionTimeout = 10000; // 10 seconds
 
-// For handling larger streams without memory issues
+// Increase raw body limit and add better error handling
 app.use(express.raw({
   type: 'multipart/x-mixed-replace',
-  limit: '50mb', // Increase limit for larger frame sizes
-  inflate: true
+  limit: '100mb', // Increased limit for larger frame sizes
+  inflate: true,
+  verify: (req, res, buf, encoding) => {
+    // Add verification function to handle aborted requests better
+    req.rawBody = buf;
+  }
 }));
 
 // Disable timeout for streaming connections
@@ -36,7 +40,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Middleware to handle raw data for the stream
+// Improved middleware to handle raw data for the stream
 app.use('/stream', (req, res, next) => {
   if (req.method === 'POST') {
     // Mark camera as connected
@@ -48,10 +52,18 @@ app.use('/stream', (req, res, next) => {
     // Update last activity timestamp
     lastCameraActivity = Date.now();
     
+    // Handle aborted connections more gracefully
+    req.on('aborted', () => {
+      console.log('Request aborted by ESP32-CAM');
+      cameraConnected = false;
+      // Don't call next() to prevent the error from bubbling up
+    });
+    
     // Set up chunked transfer for incoming data
     req.on('data', (chunk) => {
       // Process incoming data from ESP32-CAM
       if (isFirstChunk) {
+        console.log('First chunk received, size:', chunk.length);
         // Extract boundary from first chunk if present
         const headerText = chunk.toString();
         const boundaryMatch = headerText.match(/boundary=(.+)/);
@@ -326,6 +338,20 @@ app.get('/api/status', (req, res) => {
     boundary: boundaryString,
     frameSize: latestFrame.length
   });
+});
+
+// Handle errors globally
+app.use((err, req, res, next) => {
+  console.error('Global error handler:', err);
+  if (req.path === '/stream' && err.type === 'request.aborted') {
+    // Handle aborted stream requests specially
+    console.log('Stream connection aborted, waiting for reconnection...');
+    return;
+  }
+  
+  if (!res.headersSent) {
+    res.status(500).send('Server error');
+  }
 });
 
 // Start the server

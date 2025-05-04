@@ -9,11 +9,11 @@
 #include "driver/rtc_io.h"
 
 // WiFi credentials
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
+const char* ssid = "Hotspot";
+const char* password = "12345678";
 
 // Your server details
-const char* serverAddress = "YOUR_SERVER_IP";
+const char* serverAddress = "192.168.12.1";
 const int serverPort = 8000;
 const char* streamPath = "/stream";
 
@@ -227,16 +227,18 @@ bool connectToServer() {
   if (client.connect(serverAddress, serverPort)) {
     Serial.println("Connected to server");
     
-    // Send HTTP POST request header
+    // Send proper HTTP POST request header - modified for better compatibility
     client.print("POST ");
     client.print(streamPath);
     client.println(" HTTP/1.1");
     client.print("Host: ");
-    client.println(serverAddress);
+    client.print(serverAddress);
+    client.print(":");
+    client.println(serverPort);
     client.println("Content-Type: multipart/x-mixed-replace; boundary=frame");
     client.println("Connection: keep-alive");
     client.println("Cache-Control: no-cache");
-    client.println("Transfer-Encoding: chunked");
+    // Remove Transfer-Encoding: chunked as it's causing issues
     client.println();
     
     failedConnectionAttempts = 0;
@@ -268,8 +270,8 @@ void sendCameraFrame() {
   }
   
   if (client.connected() && streamActive) {
-    // Send boundary
-    client.println("--frame");
+    // Send proper multipart boundary
+    client.print("\r\n--frame\r\n");
     client.print("Content-Type: image/jpeg\r\n");
     client.print("Content-Length: ");
     client.print(fb->len);
@@ -278,6 +280,8 @@ void sendCameraFrame() {
     // Send image data in smaller chunks to prevent buffer overflows
     uint8_t *fbBuf = fb->buf;
     size_t fbLen = fb->len;
+    size_t sentBytes = 0;
+    
     for (size_t n = 0; n < fbLen; n += bufferSize) {
       if (n + bufferSize < fbLen) {
         if (client.write(fbBuf + n, bufferSize) != bufferSize) {
@@ -285,6 +289,7 @@ void sendCameraFrame() {
           streamActive = false;
           break;
         }
+        sentBytes += bufferSize;
       } else {
         size_t remainder = fbLen - n;
         if (client.write(fbBuf + n, remainder) != remainder) {
@@ -292,16 +297,20 @@ void sendCameraFrame() {
           streamActive = false;
           break;
         }
+        sentBytes += remainder;
       }
-      // Small delay between chunks to allow TCP/IP stack to process
-      delay(1);
+      
+      // Yield to avoid watchdog trigger
+      yield();
     }
     
-    client.print("\r\n");
-    
-    Serial.print("Sent frame: ");
-    Serial.print(fb->len);
-    Serial.println(" bytes");
+    if (streamActive) {
+      Serial.print("Sent frame: ");
+      Serial.print(sentBytes);
+      Serial.print("/");
+      Serial.print(fb->len);
+      Serial.println(" bytes");
+    }
   }
   
   // Return the frame buffer to be reused
@@ -315,6 +324,7 @@ void loop() {
   if (WiFi.status() == WL_CONNECTED) {
     if (!client.connected() || !streamActive) {
       streamActive = false;
+      client.stop(); // Make sure to close any existing connections
       if (connectToServer()) {
         Serial.println("Stream active");
         delay(500); // Give server time to process connection
@@ -346,4 +356,7 @@ void loop() {
     // WiFi monitor task will handle reconnection
     delay(1000);
   }
+  
+  // Give some time to background tasks
+  yield();
 }
