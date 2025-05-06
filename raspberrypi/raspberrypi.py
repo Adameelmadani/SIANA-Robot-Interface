@@ -19,7 +19,7 @@ PIN_LEFT_MOTORS_LPWM = 23
 PIN_LEFT_MOTORS_RPWM = 24
 
 # PWM Parameters
-PWM_FREQUENCY = 100  # Hz
+PWM_FREQUENCY = 8000  # Hz
 DEFAULT_SPEED = 20   # Duty cycle percentage (0-100) for movement
 
 # --- Global PWM Objects ---
