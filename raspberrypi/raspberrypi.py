@@ -15,8 +15,8 @@ SERVER_URL = "ws://192.168.12.1:3000/robot"
 # Set up motor PINS
 PIN_RIGHT_MOTORS_LPWM = 20
 PIN_RIGHT_MOTORS_RPWM = 21
-PIN_LEFT_MOTORS_LPWM = 23
-PIN_LEFT_MOTORS_RPWM = 24
+PIN_LEFT_MOTORS_LPWM = 24
+PIN_LEFT_MOTORS_RPWM = 23
 
 # PWM Parameters
 PWM_FREQUENCY = 8000  # Hz
@@ -117,7 +117,7 @@ def move_robot(direction, is_active, speed=DEFAULT_SPEED):
         set_motor_speed(pwm_left_rpwm, pwm_left_lpwm, -1, speed)
     elif direction == "right": # Turn right: Left motors forward, Right motors backward (pivot turn)
         set_motor_speed(pwm_left_rpwm, pwm_left_lpwm, 1, speed)
-        set_motor_speed(pwm_right_rpwm, pwm_right_lpwm, -1, speed)
+        set_motor_speed(pwm_right_rpwm, pwm_right_lpwm, -1, speed)  
     elif direction == "left":  # Turn left: Right motors forward, Left motors backward (pivot turn)
         set_motor_speed(pwm_right_rpwm, pwm_right_lpwm, 1, speed)
         set_motor_speed(pwm_left_rpwm, pwm_left_lpwm, -1, speed)
