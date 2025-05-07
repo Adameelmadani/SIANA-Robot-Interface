@@ -124,11 +124,39 @@ class CameraStream extends EventEmitter {
             }
         }
         
-        // Prevent buffer from growing too large (more than 1MB)
-        if (this.buffer.length > 1048576) {
-            console.warn('Camera stream buffer too large, resetting');
-            this.buffer = Buffer.alloc(0);
+        // Instead of resetting the buffer when it gets too large,
+        // we'll periodically check if we have unprocessable data at the start
+        // and trim that if needed
+        if (frameStart === -1 && this.buffer.length > 50000) {  // More than 50KB unprocessable data
+            // Look for a partial frame delimiter near the end of the buffer
+            const partialBoundaryAtEnd = this.hasPartialBoundaryAtEnd();
+            if (partialBoundaryAtEnd > 0) {
+                // Keep only the last part that might contain a boundary start
+                this.buffer = this.buffer.slice(this.buffer.length - partialBoundaryAtEnd);
+            } else {
+                // If no partial boundary at the end, and the buffer is very large,
+                // we might be getting corrupt data, so discard some old data
+                const discardBytes = Math.floor(this.buffer.length / 2);
+                console.log(`Buffer contains ${this.buffer.length} bytes with no frame boundary, discarding ${discardBytes} bytes`);
+                this.buffer = this.buffer.slice(discardBytes);
+            }
         }
+    }
+
+    // Helper method to check if there's a partial boundary at the end of the buffer
+    hasPartialBoundaryAtEnd() {
+        // Check if the end of the buffer contains part of a boundary pattern
+        const boundaryLen = this.boundaryPattern.length;
+        
+        // Check for progressively smaller parts of the boundary at the end of the buffer
+        for (let i = boundaryLen - 1; i > 0; i--) {
+            const partialBoundary = this.boundaryPattern.slice(0, i);
+            if (this.buffer.indexOf(partialBoundary, this.buffer.length - i) !== -1) {
+                return i;  // Return how many bytes might be part of a boundary
+            }
+        }
+        
+        return 0; // No partial boundary found
     }
 
     getLatestFrame(callback) {
