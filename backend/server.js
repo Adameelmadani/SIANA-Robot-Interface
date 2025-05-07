@@ -74,8 +74,10 @@ wss.on('connection', (ws, req) => {
 
             // Handle stream request from frontend
             if (!isRaspberryPi && data.type === 'stream_request') {
+                console.log('Camera stream requested');
+                ws.cameraStreamEnabled = true;
+                
                 if (cameraStream.isStreamConnected()) {
-                    ws.cameraStreamEnabled = true;
                     console.log('Camera stream requested by client. Stream is active.');
                     
                     // Send initial confirmation
@@ -83,6 +85,17 @@ wss.on('connection', (ws, req) => {
                         type: 'stream_status',
                         connected: true
                     }));
+                    
+                    // Try to immediately send the latest frame if available
+                    cameraStream.getLatestFrame(frame => {
+                        if (frame) {
+                            const frameBase64 = frame.toString('base64');
+                            ws.send(JSON.stringify({
+                                type: 'camera_frame',
+                                data: frameBase64
+                            }));
+                        }
+                    });
                 } else {
                     console.log('Camera stream requested but camera is not connected');
                     ws.send(JSON.stringify({
@@ -90,6 +103,10 @@ wss.on('connection', (ws, req) => {
                         connected: false,
                         message: 'Camera is not connected'
                     }));
+                    
+                    // Try to connect to the camera
+                    console.log('Attempting to connect to the camera...');
+                    cameraStream.connect();
                 }
             }
             
@@ -104,6 +121,7 @@ wss.on('connection', (ws, req) => {
             
         } catch (e) {
             console.error('Error parsing message:', e);
+            console.error('Raw message:', message);
         }
     });
     
@@ -141,18 +159,24 @@ wss.on('connection', (ws, req) => {
 
 // Camera stream events
 cameraStream.on('frame', (frameBuffer) => {
-    // Convert frame buffer to base64
-    const frameBase64 = frameBuffer.toString('base64');
-    
-    // Send frame to all connected frontend clients that requested the stream
-    frontendConnections.forEach(client => {
-        if (client.readyState === WebSocket.OPEN && client.cameraStreamEnabled) {
-            client.send(JSON.stringify({
-                type: 'camera_frame',
-                data: frameBase64
-            }));
-        }
-    });
+    try {
+        // Convert frame buffer to base64
+        const frameBase64 = frameBuffer.toString('base64');
+        
+        console.log(`Received camera frame: ${frameBuffer.length} bytes`);
+        
+        // Send frame to all connected frontend clients that requested the stream
+        frontendConnections.forEach(client => {
+            if (client.readyState === WebSocket.OPEN && client.cameraStreamEnabled) {
+                client.send(JSON.stringify({
+                    type: 'camera_frame',
+                    data: frameBase64
+                }));
+            }
+        });
+    } catch (error) {
+        console.error('Error processing camera frame:', error);
+    }
 });
 
 cameraStream.on('connected', () => {

@@ -11,6 +11,8 @@ class CameraStream extends EventEmitter {
         this.boundaryPattern = Buffer.from('\r\n--frame\r\n');
         this.contentLengthPattern = /Content-Length: (\d+)/i;
         this.buffer = Buffer.alloc(0);
+        this.latestFrame = null;
+        this.lastFrameTime = 0;
     }
 
     connect(ip = null) {
@@ -98,9 +100,13 @@ class CameraStream extends EventEmitter {
                     // Find the end of headers (double CRLF)
                     const headersEnd = frameData.indexOf(Buffer.from('\r\n\r\n'));
                     
-                    if (headersEnd !== -1) {
+                    if (headersEnd !== -1 && headersEnd + 4 + contentLength <= frameData.length) {
                         // Extract the JPEG data
                         const jpegData = frameData.slice(headersEnd + 4, headersEnd + 4 + contentLength);
+                        
+                        // Store the latest frame
+                        this.latestFrame = jpegData;
+                        this.lastFrameTime = Date.now();
                         
                         // Emit the frame
                         this.emit('frame', jpegData);
@@ -117,6 +123,22 @@ class CameraStream extends EventEmitter {
                 break;
             }
         }
+        
+        // Prevent buffer from growing too large (more than 1MB)
+        if (this.buffer.length > 1048576) {
+            console.warn('Camera stream buffer too large, resetting');
+            this.buffer = Buffer.alloc(0);
+        }
+    }
+
+    getLatestFrame(callback) {
+        // If we have a recent frame (within the last 5 seconds), return it
+        if (this.latestFrame && Date.now() - this.lastFrameTime < 5000) {
+            callback(this.latestFrame);
+            return true;
+        }
+        callback(null);
+        return false;
     }
 
     disconnect() {
