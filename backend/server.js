@@ -338,4 +338,7 @@ app.get('*', (req, res) => {
 server.listen(port, () => {
     console.log(`Server is running on http://localhost:${port}`);
     console.log(`WebSocket server is running on ws://localhost:${port}/robot`);
+    
+    // Try to connect to the ESP32-CAM when server starts
+    cameraStream.connect();
 });
