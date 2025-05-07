@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 PCA_I2C_ADDRESS = 0x40  # Default I2C address for PCA9685
 SERVO_PWM_FREQUENCY = 50 # Hz, common for analog servos
 
-# Servo to test (Channel 1)
-SERVO_CHANNEL_TO_TEST = 1  # <<< CHANGED to test the second servo
+# Servo to test (Channel 0)
+SERVO_CHANNEL_TO_TEST = 0  # <<< MODIFIED TO TEST CHANNEL 0
 SERVO_NAME = f"Servo_Channel_{SERVO_CHANNEL_TO_TEST}"
 
 # Servo pulse width range (in microseconds) and actuation range (degrees)
@@ -23,33 +23,31 @@ MAX_PULSE_US = 2500
 ACTUATION_RANGE_DEG = 180
 
 # Movement parameters for the test
-# Let's use a starting point that's not at the extreme end
 START_POSITION_DEG = 45.0     # Initial position for the servo (e.g., 45 degrees)
-MOVEMENT_RANGE_DEG = 25.0   # Move 25 degrees from the start position <<< CHANGED
+MOVEMENT_RANGE_DEG = 25.0   # Move 25 degrees from the start position
 END_POSITION_DEG = START_POSITION_DEG + MOVEMENT_RANGE_DEG # Will be 45 + 25 = 70 degrees
 
-# Parameters for slow movement (using the previously "good" slow value)
+# Parameters for slow movement
 SLOW_MOVE_STEP_DEG = 1.0      # Move 1 degree at a time
-SLOW_MOVE_DELAY_S = 10    # Pause 100ms between steps (adjust if needed)
+SLOW_MOVE_DELAY_S = 1    # Pause 100ms between steps. Adjust if too fast/slow.
+                           # (You had 10 in your paste, which is very slow; 0.1 is a moderate slow)
 
 # Ensure END_POSITION_DEG is within reasonable servo limits
 if END_POSITION_DEG > ACTUATION_RANGE_DEG:
     END_POSITION_DEG = float(ACTUATION_RANGE_DEG)
     logger.warning(f"Calculated end position was > {ACTUATION_RANGE_DEG} deg. Limiting to {ACTUATION_RANGE_DEG} deg.")
-if END_POSITION_DEG < 0: # Should not happen with these values, but good check
+if END_POSITION_DEG < 0:
     END_POSITION_DEG = 0.0
     logger.warning(f"Calculated end position was < 0 deg. Limiting to 0 deg.")
 
 
-logger.info("--- PCA9685 Single Servo (Channel 1) - 25 Degree Slow Movement Test ---")
+logger.info(f"--- PCA9685 Single Servo (Channel {SERVO_CHANNEL_TO_TEST}) - 25 Degree Slow Movement Test ---") # Updated log
 logger.warning("!! CRITICAL !! ENSURE WIRING (ESPECIALLY COMMON GROUND) AND SERVO POWER ARE CORRECT!")
 logger.info(f"Servo on Channel {SERVO_CHANNEL_TO_TEST} will attempt to move slowly between {START_POSITION_DEG}° and {END_POSITION_DEG}° once.\n")
 logger.warning("Ensure your external servo power supply is adequate!\n")
 
 pca = None
 servo_motor = None
-# Initialize current_servo_angle, assuming it might not be at START_POSITION_DEG
-# We will move it to START_POSITION_DEG slowly from an assumed 90 deg position.
 current_servo_angle = 90.0 # An assumed initial state before script takes control
 
 def move_servo_slowly(s_obj, target_angle, current_angle, step_size=1.0, delay=0.05):
@@ -140,27 +138,25 @@ except Exception as e:
 finally:
     logger.info("\nInitiating shutdown sequence...")
     if servo_motor:
-        # Move to a general neutral position before detaching
         neutral_angle = 90.0
-        if not (0 <= neutral_angle <= ACTUATION_RANGE_DEG): # If 90 is out of defined range for some reason
+        if not (0 <= neutral_angle <= ACTUATION_RANGE_DEG):
             neutral_angle = START_POSITION_DEG if START_POSITION_DEG is not None else ACTUATION_RANGE_DEG / 2.0
 
         logger.info(f"Attempting to slowly move servo '{SERVO_NAME}' to neutral position ({neutral_angle}°)...")
         try:
-            # Use the last known angle for current_servo_angle
             move_servo_slowly(servo_motor, neutral_angle, current_servo_angle,
-                              step_size=2.0, delay=0.02) # Relatively faster for shutdown
+                              step_size=2.0, delay=0.02)
         except Exception as e_final_move:
             logger.warning(f"Could not perform final slow move for '{SERVO_NAME}': {e_final_move}. Setting angle directly.")
             try:
-                servo_motor.angle = neutral_angle # Fallback to direct move
+                servo_motor.angle = neutral_angle
             except Exception as e_direct_move:
                 logger.warning(f"Could not set final direct angle for '{SERVO_NAME}': {e_direct_move}")
         time.sleep(0.5)
 
         logger.info(f"Detaching servo '{SERVO_NAME}' (stopping PWM signal)...")
         try:
-            servo_motor.angle = None # Stops sending pulses
+            servo_motor.angle = None
         except Exception as e_detach:
             logger.warning(f"Could not detach '{SERVO_NAME}' using angle=None: {e_detach}")
             if pca:
@@ -168,7 +164,7 @@ finally:
                 pca.channels[SERVO_CHANNEL_TO_TEST].duty_cycle = 0
     elif pca:
         logger.info(f"PCA9685 was initialized but servo object might not have been. Setting channel {SERVO_CHANNEL_TO_TEST} to 0 duty cycle.")
-        if 0 <= SERVO_CHANNEL_TO_TEST < 16: # Check valid channel
+        if 0 <= SERVO_CHANNEL_TO_TEST < 16:
              pca.channels[SERVO_CHANNEL_TO_TEST].duty_cycle = 0
     else:
         logger.info("PCA9685 was not initialized. No channels to detach.")
