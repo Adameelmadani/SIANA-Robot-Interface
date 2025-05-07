@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 PCA_I2C_ADDRESS = 0x40  # Default I2C address for PCA9685
 SERVO_PWM_FREQUENCY = 50 # Hz, common for analog servos
 
-# Servo to test (Channel 0)
-SERVO_CHANNEL_TO_TEST = 0
-SERVO_NAME = f"Servo_Channel_{SERVO_CHANNEL_TO_TEST}" # e.g. "MG995_Channel_0" if you know type
+# Servo to test (Channel 1)
+SERVO_CHANNEL_TO_TEST = 1  # <<< CHANGED to test the second servo
+SERVO_NAME = f"Servo_Channel_{SERVO_CHANNEL_TO_TEST}"
 
 # Servo pulse width range (in microseconds) and actuation range (degrees)
 MIN_PULSE_US = 500
@@ -23,63 +23,60 @@ MAX_PULSE_US = 2500
 ACTUATION_RANGE_DEG = 180
 
 # Movement parameters for the test
-START_POSITION_DEG = 0.0     # Initial position for the servo
-QUARTER_MOVEMENT_DEG = 45.0  # Move 45 degrees from the start position
-END_POSITION_DEG = START_POSITION_DEG + QUARTER_MOVEMENT_DEG
+# Let's use a starting point that's not at the extreme end
+START_POSITION_DEG = 45.0     # Initial position for the servo (e.g., 45 degrees)
+MOVEMENT_RANGE_DEG = 25.0   # Move 25 degrees from the start position <<< CHANGED
+END_POSITION_DEG = START_POSITION_DEG + MOVEMENT_RANGE_DEG # Will be 45 + 25 = 70 degrees
 
-# Parameters for slow movement
-SLOW_MOVE_STEP_DEG = 1.0      # Move 1 degree at a time for slow movement
-SLOW_MOVE_DELAY_S = 0.05   # Pause 50ms between steps (adjust for faster/slower)
-                           # 0.02 = faster, 0.1 = very slow
+# Parameters for slow movement (using the previously "good" slow value)
+SLOW_MOVE_STEP_DEG = 1.0      # Move 1 degree at a time
+SLOW_MOVE_DELAY_S = 10    # Pause 100ms between steps (adjust if needed)
 
 # Ensure END_POSITION_DEG is within reasonable servo limits
 if END_POSITION_DEG > ACTUATION_RANGE_DEG:
     END_POSITION_DEG = float(ACTUATION_RANGE_DEG)
     logger.warning(f"Calculated end position was > {ACTUATION_RANGE_DEG} deg. Limiting to {ACTUATION_RANGE_DEG} deg.")
-if END_POSITION_DEG < 0:
+if END_POSITION_DEG < 0: # Should not happen with these values, but good check
     END_POSITION_DEG = 0.0
     logger.warning(f"Calculated end position was < 0 deg. Limiting to 0 deg.")
 
 
-logger.info("--- PCA9685 Single Servo Slow Movement Test ---")
+logger.info("--- PCA9685 Single Servo (Channel 1) - 25 Degree Slow Movement Test ---")
 logger.warning("!! CRITICAL !! ENSURE WIRING (ESPECIALLY COMMON GROUND) AND SERVO POWER ARE CORRECT!")
-logger.info(f"Servo on Channel {SERVO_CHANNEL_TO_TEST} will attempt to move slowly between {START_POSITION_DEG}° and {END_POSITION_DEG}°.\n")
+logger.info(f"Servo on Channel {SERVO_CHANNEL_TO_TEST} will attempt to move slowly between {START_POSITION_DEG}° and {END_POSITION_DEG}° once.\n")
 logger.warning("Ensure your external servo power supply is adequate!\n")
 
 pca = None
 servo_motor = None
-current_servo_angle = START_POSITION_DEG # Keep track of the servo's current commanded angle
+# Initialize current_servo_angle, assuming it might not be at START_POSITION_DEG
+# We will move it to START_POSITION_DEG slowly from an assumed 90 deg position.
+current_servo_angle = 90.0 # An assumed initial state before script takes control
 
 def move_servo_slowly(s_obj, target_angle, current_angle, step_size=1.0, delay=0.05):
     """Moves a servo slowly from current_angle to target_angle."""
     logger.info(f"  Slowly moving '{SERVO_NAME}' from {current_angle:.1f}° to {target_angle:.1f}°...")
-    
-    # Ensure target is float for consistent comparison
+
     target_angle = float(target_angle)
     current_angle = float(current_angle)
 
-    if abs(current_angle - target_angle) < step_size: # Already close or at target
-        if s_obj.angle is None or abs(s_obj.angle - target_angle) > 0.5: # Check if servo angle is None or not at target
+    if abs(current_angle - target_angle) < step_size:
+        if s_obj.angle is None or abs(s_obj.angle - target_angle) > 0.5 :
             s_obj.angle = target_angle
         logger.info(f"    Servo already at/near target or very small move to: {target_angle:.1f}°")
         return target_angle
 
     intermediate_angle = current_angle
     if target_angle > current_angle:
-        # Move forward (increasing angle)
         while intermediate_angle < target_angle:
             intermediate_angle = min(intermediate_angle + step_size, target_angle)
             s_obj.angle = intermediate_angle
-            # logger.debug(f"    Moved to {intermediate_angle:.1f}°") # Uncomment for detailed step logging
             time.sleep(delay)
     else: # target_angle < current_angle
-        # Move backward (decreasing angle)
         while intermediate_angle > target_angle:
             intermediate_angle = max(intermediate_angle - step_size, target_angle)
             s_obj.angle = intermediate_angle
-            # logger.debug(f"    Moved to {intermediate_angle:.1f}°") # Uncomment for detailed step logging
             time.sleep(delay)
-    
+
     logger.info(f"    Servo '{SERVO_NAME}' reached {intermediate_angle:.1f}°.")
     return intermediate_angle
 
@@ -108,32 +105,32 @@ try:
                               actuation_range=ACTUATION_RANGE_DEG)
     logger.info("Servo object created.")
 
-    logger.info(f"\nAllowing servo '{SERVO_NAME}' to initialize and move to start position ({START_POSITION_DEG}°)...")
-    # Move to start position slowly or quickly? For init, quick might be fine. Let's use slow for consistency.
-    current_servo_angle = move_servo_slowly(servo_motor, START_POSITION_DEG, 90, # Assume it might be at 90
-                                            step_size=5.0, delay=SLOW_MOVE_DELAY_S) # Faster for initial positioning
-    # servo_motor.angle = START_POSITION_DEG # Alternative: direct move
-    # current_servo_angle = START_POSITION_DEG
-    time.sleep(1.0) # Give servo time to move and settle
+    logger.info(f"\nInitializing servo '{SERVO_NAME}' to start position ({START_POSITION_DEG}°)...")
+    current_servo_angle = move_servo_slowly(servo_motor, START_POSITION_DEG, current_servo_angle,
+                                            step_size=5.0, delay=0.02) # Faster for initial positioning
+    time.sleep(1.0)
 
-    logger.info(f"\nStarting repetitive slow movement for '{SERVO_NAME}' (Ctrl+C to stop)...")
-    while True:
-        # Move to quarter movement position
-        current_servo_angle = move_servo_slowly(servo_motor, END_POSITION_DEG, current_servo_angle,
-                                                step_size=SLOW_MOVE_STEP_DEG, delay=SLOW_MOVE_DELAY_S)
-        time.sleep(0.5) # Pause at end position
+    logger.info(f"\nPerforming one slow back-and-forth movement for '{SERVO_NAME}'...")
 
-        # Move back to start position
-        current_servo_angle = move_servo_slowly(servo_motor, START_POSITION_DEG, current_servo_angle,
-                                                step_size=SLOW_MOVE_STEP_DEG, delay=SLOW_MOVE_DELAY_S)
-        time.sleep(0.5) # Pause at start position
+    # 1. Move to END_POSITION_DEG
+    current_servo_angle = move_servo_slowly(servo_motor, END_POSITION_DEG, current_servo_angle,
+                                            step_size=SLOW_MOVE_STEP_DEG, delay=SLOW_MOVE_DELAY_S)
+    time.sleep(1.0) # Pause at end position
+
+    # 2. Move back to START_POSITION_DEG
+    current_servo_angle = move_servo_slowly(servo_motor, START_POSITION_DEG, current_servo_angle,
+                                            step_size=SLOW_MOVE_STEP_DEG, delay=SLOW_MOVE_DELAY_S)
+    time.sleep(1.0) # Pause at start position
+
+    logger.info("Movement sequence complete.")
+
 
 except KeyboardInterrupt:
-    logger.info("\nTest stopped by user.")
+    logger.info("\nTest stopped by user (Ctrl+C).")
 except ImportError as e:
-    logger.error(f"\n--- LIBRARY ERROR ---") # Using logger.error for errors
+    logger.error(f"\n--- LIBRARY ERROR ---")
     logger.error(f"A required library is not installed: {e}")
-    logger.error("Please ensure 'adafruit-blinka', 'adafruit-circuitpython-pca9685', and 'adafruit-circuitpython-motor' are installed within your virtual environment.")
+    logger.error("Please ensure 'adafruit-blinka', 'adafruit-circuitpython-pca9685', and 'adafruit-circuitpython-motor' are installed.")
 except (OSError, RuntimeError, ValueError) as e:
     logger.error(f"\n--- ERROR DETECTED ---")
     logger.error(f"An error occurred: {e}")
@@ -143,13 +140,14 @@ except Exception as e:
 finally:
     logger.info("\nInitiating shutdown sequence...")
     if servo_motor:
+        # Move to a general neutral position before detaching
         neutral_angle = 90.0
-        if not (0 <= neutral_angle <= ACTUATION_RANGE_DEG):
-            neutral_angle = START_POSITION_DEG
-        
+        if not (0 <= neutral_angle <= ACTUATION_RANGE_DEG): # If 90 is out of defined range for some reason
+            neutral_angle = START_POSITION_DEG if START_POSITION_DEG is not None else ACTUATION_RANGE_DEG / 2.0
+
         logger.info(f"Attempting to slowly move servo '{SERVO_NAME}' to neutral position ({neutral_angle}°)...")
-        # Try to move slowly to neutral, assuming current_servo_angle is somewhat accurate
         try:
+            # Use the last known angle for current_servo_angle
             move_servo_slowly(servo_motor, neutral_angle, current_servo_angle,
                               step_size=2.0, delay=0.02) # Relatively faster for shutdown
         except Exception as e_final_move:
@@ -162,7 +160,7 @@ finally:
 
         logger.info(f"Detaching servo '{SERVO_NAME}' (stopping PWM signal)...")
         try:
-            servo_motor.angle = None
+            servo_motor.angle = None # Stops sending pulses
         except Exception as e_detach:
             logger.warning(f"Could not detach '{SERVO_NAME}' using angle=None: {e_detach}")
             if pca:
@@ -170,7 +168,8 @@ finally:
                 pca.channels[SERVO_CHANNEL_TO_TEST].duty_cycle = 0
     elif pca:
         logger.info(f"PCA9685 was initialized but servo object might not have been. Setting channel {SERVO_CHANNEL_TO_TEST} to 0 duty cycle.")
-        pca.channels[SERVO_CHANNEL_TO_TEST].duty_cycle = 0
+        if 0 <= SERVO_CHANNEL_TO_TEST < 16: # Check valid channel
+             pca.channels[SERVO_CHANNEL_TO_TEST].duty_cycle = 0
     else:
         logger.info("PCA9685 was not initialized. No channels to detach.")
 
