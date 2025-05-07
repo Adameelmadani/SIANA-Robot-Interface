@@ -5,133 +5,159 @@ class CameraStream extends EventEmitter {
     constructor() {
         super();
         this.connected = false;
-        this.req = null;
-        this.cameraIp = '192.168.4.1'; // Default ESP32-CAM IP
-        this.streamPath = '/stream';
-        this.boundaryPattern = Buffer.from('\r\n--frame\r\n');
-        this.contentLengthPattern = /Content-Length: (\d+)/i;
-        this.buffer = Buffer.alloc(0);
+        this.connectionAttempts = 0;
+        this.maxAttempts = 20;
+        this.streamRequest = null;
+        this.connectionTimeout = null;
     }
 
-    connect(ip = null) {
-        // Allow overriding the default IP
-        if (ip) {
-            this.cameraIp = ip;
+    connect(ipAddress = '192.168.4.1') {
+        if (this.connectionAttempts >= this.maxAttempts) {
+            console.log('Max connection attempts reached. Stopping attempts.');
+            return;
         }
 
-        console.log(`Attempting to connect to camera stream at http://${this.cameraIp}${this.streamPath}`);
-        
-        // Abort any existing request
-        if (this.req) {
-            this.req.destroy();
-            this.req = null;
-        }
+        console.log(`Attempting to connect to ESP32-CAM stream at http://${ipAddress}/stream`);
+        this.connectionAttempts++;
+
+        // Clear any existing connection
+        this.disconnect();
+
+        // Set a timeout to mark connection as failed if it takes too long
+        this.connectionTimeout = setTimeout(() => {
+            console.log('Connection timeout');
+            this.disconnect();
+            
+            // Try to reconnect after delay
+            setTimeout(() => this.connect(ipAddress), 5000);
+        }, 10000);
 
         // Connect to the MJPEG stream
-        this.req = http.get(`http://${this.cameraIp}${this.streamPath}`, (res) => {
-            console.log(`Connected to camera stream with status: ${res.statusCode}`);
+        this.streamRequest = http.get(`http://${ipAddress}/stream`, (res) => {
+            clearTimeout(this.connectionTimeout);
             
             if (res.statusCode !== 200) {
-                this.emit('disconnected', `Failed to connect: HTTP ${res.statusCode}`);
-                console.error(`Failed to connect to camera: HTTP ${res.statusCode}`);
-                this.connected = false;
+                console.error(`Failed to connect to stream: ${res.statusCode}`);
+                this.emit('disconnected');
+                
+                // Try to reconnect after delay
+                setTimeout(() => this.connect(ipAddress), 5000);
+                return;
+            }
+            
+            console.log('Connected to ESP32-CAM stream');
+            this.connected = true;
+            this.connectionAttempts = 0;
+            this.emit('connected');
+
+            // MJPEG streams use multipart/x-mixed-replace
+            let boundary = this.getBoundary(res.headers['content-type']);
+            if (!boundary) {
+                console.error('Could not find boundary in Content-Type header');
+                this.disconnect();
                 return;
             }
 
-            this.connected = true;
-            this.emit('connected');
-            
-            // Handle stream data
-            res.on('data', (chunk) => {
-                this._processStreamChunk(chunk);
-            });
-
-            res.on('end', () => {
-                console.log('Camera stream ended');
-                this.connected = false;
-                this.emit('disconnected', 'Stream ended');
-            });
-
-        }).on('error', (err) => {
-            console.error(`Error connecting to camera: ${err.message}`);
-            this.connected = false;
-            this.emit('disconnected', err.message);
-            
-            // Retry connection after delay
-            setTimeout(() => this.connect(), 5000);
+            // Process the MJPEG stream
+            this.processMjpegStream(res, boundary);
         });
 
-        // Set a timeout
-        this.req.setTimeout(10000, () => {
-            console.error('Camera stream request timeout');
-            this.req.destroy();
+        this.streamRequest.on('error', (err) => {
+            clearTimeout(this.connectionTimeout);
+            console.error('Error connecting to ESP32-CAM stream:', err);
             this.connected = false;
-            this.emit('disconnected', 'Request timeout');
+            this.emit('disconnected');
             
-            // Retry connection after delay
-            setTimeout(() => this.connect(), 5000);
+            // Try to reconnect after delay
+            setTimeout(() => this.connect(ipAddress), 5000);
         });
-    }
-
-    _processStreamChunk(chunk) {
-        // Append the new chunk to our buffer
-        this.buffer = Buffer.concat([this.buffer, chunk]);
-        
-        // Try to extract frames from the buffer
-        let frameStart = this.buffer.indexOf(this.boundaryPattern);
-        
-        while (frameStart !== -1) {
-            // Look for the next boundary after this one
-            const nextFrameStart = this.buffer.indexOf(this.boundaryPattern, frameStart + this.boundaryPattern.length);
-            
-            if (nextFrameStart !== -1) {
-                // Extract the frame data between boundaries
-                const frameData = this.buffer.slice(frameStart + this.boundaryPattern.length, nextFrameStart);
-                
-                // Find Content-Length in the frame data
-                const frameText = frameData.toString('ascii', 0, 100); // Just look at the header part
-                const match = this.contentLengthPattern.exec(frameText);
-                
-                if (match) {
-                    const contentLength = parseInt(match[1], 10);
-                    
-                    // Find the end of headers (double CRLF)
-                    const headersEnd = frameData.indexOf(Buffer.from('\r\n\r\n'));
-                    
-                    if (headersEnd !== -1) {
-                        // Extract the JPEG data
-                        const jpegData = frameData.slice(headersEnd + 4, headersEnd + 4 + contentLength);
-                        
-                        // Emit the frame
-                        this.emit('frame', jpegData);
-                    }
-                }
-                
-                // Remove the processed frame from the buffer
-                this.buffer = this.buffer.slice(nextFrameStart);
-                
-                // Look for the next frame
-                frameStart = this.buffer.indexOf(this.boundaryPattern);
-            } else {
-                // We don't have a complete frame yet, wait for more data
-                break;
-            }
-        }
     }
 
     disconnect() {
-        if (this.req) {
-            this.req.destroy();
-            this.req = null;
+        if (this.streamRequest) {
+            this.streamRequest.destroy();
+            this.streamRequest = null;
         }
-        this.connected = false;
-        this.emit('disconnected', 'Manually disconnected');
+        
+        if (this.connectionTimeout) {
+            clearTimeout(this.connectionTimeout);
+            this.connectionTimeout = null;
+        }
+        
+        if (this.connected) {
+            this.connected = false;
+            this.emit('disconnected');
+        }
     }
 
     isStreamConnected() {
         return this.connected;
     }
+
+    getBoundary(contentType) {
+        if (!contentType) return null;
+        const matches = contentType.match(/boundary=([^\s;]+)/i);
+        return matches ? matches[1] : 'frame';  // Default to 'frame' if not found
+    }
+
+    processMjpegStream(stream, boundary) {
+        let buffer = Buffer.alloc(0);
+        const boundaryBuffer = Buffer.from(`--${boundary}\r\n`, 'utf8');
+        const endMarkerBuffer = Buffer.from('\r\n\r\n', 'utf8');
+        
+        stream.on('data', (chunk) => {
+            buffer = Buffer.concat([buffer, chunk]);
+            
+            let startMarkerIndex;
+            while ((startMarkerIndex = buffer.indexOf(boundaryBuffer)) !== -1) {
+                // Found the start of a frame
+                buffer = buffer.slice(startMarkerIndex + boundaryBuffer.length);
+                
+                // Find the header end
+                const headerEndIndex = buffer.indexOf(endMarkerBuffer);
+                if (headerEndIndex === -1) continue;
+                
+                // Extract the Content-Length from headers
+                const headers = buffer.slice(0, headerEndIndex).toString();
+                const contentLengthMatch = headers.match(/Content-Length:\s*(\d+)/i);
+                if (!contentLengthMatch) continue;
+                
+                const contentLength = parseInt(contentLengthMatch[1], 10);
+                
+                // Check if we have the complete frame
+                const frameStartIndex = headerEndIndex + endMarkerBuffer.length;
+                if (buffer.length >= frameStartIndex + contentLength) {
+                    // Extract the frame
+                    const frameBuffer = buffer.slice(frameStartIndex, frameStartIndex + contentLength);
+                    
+                    // Emit the frame
+                    this.emit('frame', frameBuffer);
+                    
+                    // Remove the processed frame from buffer
+                    buffer = buffer.slice(frameStartIndex + contentLength);
+                } else {
+                    // Incomplete frame, wait for more data
+                    break;
+                }
+            }
+        });
+        
+        stream.on('error', (err) => {
+            console.error('Stream error:', err);
+            this.disconnect();
+            
+            // Try to reconnect after delay
+            setTimeout(() => this.connect(), 5000);
+        });
+        
+        stream.on('end', () => {
+            console.log('Stream ended');
+            this.disconnect();
+            
+            // Try to reconnect after delay
+            setTimeout(() => this.connect(), 5000);
+        });
+    }
 }
 
-// Export a singleton instance
 module.exports = new CameraStream();
