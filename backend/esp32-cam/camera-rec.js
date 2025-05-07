@@ -10,9 +10,12 @@ class CameraStream extends EventEmitter {
         this.streamPath = '/stream';
         this.boundaryPattern = Buffer.from('\r\n--frame\r\n');
         this.contentLengthPattern = /Content-Length: (\d+)/i;
+        this.contentTypePattern = /Content-Type: image\/jpeg/i;
         this.buffer = Buffer.alloc(0);
         this.latestFrame = null;
         this.lastFrameTime = 0;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 10;
     }
 
     connect(ip = null) {
@@ -30,16 +33,23 @@ class CameraStream extends EventEmitter {
         }
 
         // Connect to the MJPEG stream
-        this.req = http.get(`http://${this.cameraIp}${this.streamPath}`, (res) => {
+        this.req = http.get({
+            hostname: this.cameraIp,
+            path: this.streamPath,
+            timeout: 10000 // 10 second timeout
+        }, (res) => {
             console.log(`Connected to camera stream with status: ${res.statusCode}`);
             
             if (res.statusCode !== 200) {
                 this.emit('disconnected', `Failed to connect: HTTP ${res.statusCode}`);
                 console.error(`Failed to connect to camera: HTTP ${res.statusCode}`);
                 this.connected = false;
+                this.scheduleReconnect();
                 return;
             }
 
+            // Reset reconnect attempts on successful connection
+            this.reconnectAttempts = 0;
             this.connected = true;
             this.emit('connected');
             
@@ -52,15 +62,14 @@ class CameraStream extends EventEmitter {
                 console.log('Camera stream ended');
                 this.connected = false;
                 this.emit('disconnected', 'Stream ended');
+                this.scheduleReconnect();
             });
 
         }).on('error', (err) => {
             console.error(`Error connecting to camera: ${err.message}`);
             this.connected = false;
             this.emit('disconnected', err.message);
-            
-            // Retry connection after delay
-            setTimeout(() => this.connect(), 5000);
+            this.scheduleReconnect();
         });
 
         // Set a timeout
@@ -69,10 +78,27 @@ class CameraStream extends EventEmitter {
             this.req.destroy();
             this.connected = false;
             this.emit('disconnected', 'Request timeout');
-            
-            // Retry connection after delay
-            setTimeout(() => this.connect(), 5000);
+            this.scheduleReconnect();
         });
+    }
+
+    scheduleReconnect() {
+        this.reconnectAttempts++;
+        let delay = Math.min(5000 * this.reconnectAttempts, 30000); // Increasing delay up to 30 seconds
+        
+        if (this.reconnectAttempts <= this.maxReconnectAttempts) {
+            console.log(`Scheduling reconnection attempt ${this.reconnectAttempts} in ${delay/1000} seconds`);
+            setTimeout(() => this.connect(), delay);
+        } else {
+            console.error(`Maximum reconnection attempts (${this.maxReconnectAttempts}) reached. Giving up.`);
+            // Emit a special event to notify that we've stopped trying
+            this.emit('reconnect_failed');
+            
+            // Reset reconnect counter so we can try again later if requested
+            setTimeout(() => {
+                this.reconnectAttempts = 0;
+            }, 60000); // Reset after 1 minute
+        }
     }
 
     _processStreamChunk(chunk) {
@@ -90,28 +116,8 @@ class CameraStream extends EventEmitter {
                 // Extract the frame data between boundaries
                 const frameData = this.buffer.slice(frameStart + this.boundaryPattern.length, nextFrameStart);
                 
-                // Find Content-Length in the frame data
-                const frameText = frameData.toString('ascii', 0, 100); // Just look at the header part
-                const match = this.contentLengthPattern.exec(frameText);
-                
-                if (match) {
-                    const contentLength = parseInt(match[1], 10);
-                    
-                    // Find the end of headers (double CRLF)
-                    const headersEnd = frameData.indexOf(Buffer.from('\r\n\r\n'));
-                    
-                    if (headersEnd !== -1 && headersEnd + 4 + contentLength <= frameData.length) {
-                        // Extract the JPEG data
-                        const jpegData = frameData.slice(headersEnd + 4, headersEnd + 4 + contentLength);
-                        
-                        // Store the latest frame
-                        this.latestFrame = jpegData;
-                        this.lastFrameTime = Date.now();
-                        
-                        // Emit the frame
-                        this.emit('frame', jpegData);
-                    }
-                }
+                // Process the frame data (extract JPEG)
+                this._extractAndEmitFrame(frameData);
                 
                 // Remove the processed frame from the buffer
                 this.buffer = this.buffer.slice(nextFrameStart);
@@ -124,34 +130,88 @@ class CameraStream extends EventEmitter {
             }
         }
         
-        // Instead of resetting the buffer when it gets too large,
-        // we'll periodically check if we have unprocessable data at the start
-        // and trim that if needed
-        if (frameStart === -1 && this.buffer.length > 50000) {  // More than 50KB unprocessable data
-            // Look for a partial frame delimiter near the end of the buffer
-            const partialBoundaryAtEnd = this.hasPartialBoundaryAtEnd();
-            if (partialBoundaryAtEnd > 0) {
-                // Keep only the last part that might contain a boundary start
-                this.buffer = this.buffer.slice(this.buffer.length - partialBoundaryAtEnd);
+        // If buffer gets very large without finding frame boundaries, do some cleanup
+        if (frameStart === -1 && this.buffer.length > 100000) { // 100KB
+            // See if we can find a partial boundary at the end to keep
+            const partialBoundarySize = this._findPartialBoundaryAtEnd();
+            if (partialBoundarySize > 0) {
+                // Keep only the partial boundary
+                this.buffer = this.buffer.slice(this.buffer.length - partialBoundarySize);
+                console.log(`Large buffer truncated, keeping ${partialBoundarySize} bytes of possible boundary`);
             } else {
-                // If no partial boundary at the end, and the buffer is very large,
-                // we might be getting corrupt data, so discard some old data
-                const discardBytes = Math.floor(this.buffer.length / 2);
-                console.log(`Buffer contains ${this.buffer.length} bytes with no frame boundary, discarding ${discardBytes} bytes`);
-                this.buffer = this.buffer.slice(discardBytes);
+                // Keep only the last portion of the buffer
+                const keepSize = 8192; // 8KB
+                this.buffer = this.buffer.slice(-keepSize);
+                console.log(`Large buffer truncated, keeping last ${keepSize} bytes`);
             }
         }
     }
 
-    // Helper method to check if there's a partial boundary at the end of the buffer
-    hasPartialBoundaryAtEnd() {
+    _extractAndEmitFrame(frameData) {
+        try {
+            // Convert to string for header inspection
+            const frameHeader = frameData.slice(0, 200).toString('ascii');
+            
+            // Check for JPEG content type
+            if (!this.contentTypePattern.test(frameHeader)) {
+                return; // Not a JPEG frame
+            }
+            
+            // Find Content-Length
+            const match = this.contentLengthPattern.exec(frameHeader);
+            if (!match) {
+                return; // No content length found
+            }
+            
+            const contentLength = parseInt(match[1], 10);
+            if (isNaN(contentLength) || contentLength <= 0 || contentLength > 1000000) {
+                console.warn(`Invalid content length: ${match[1]}`);
+                return; // Invalid content length
+            }
+            
+            // Find the start of actual JPEG data (after headers)
+            const headersEnd = frameData.indexOf(Buffer.from('\r\n\r\n'));
+            if (headersEnd === -1) {
+                return; // No end of headers found
+            }
+            
+            // Extract the JPEG data
+            const jpegStartPos = headersEnd + 4;
+            
+            // Ensure we have enough data
+            if (jpegStartPos + contentLength > frameData.length) {
+                console.warn(`Incomplete frame: expected ${contentLength} bytes, got ${frameData.length - jpegStartPos}`);
+                return; // Not enough data
+            }
+            
+            const jpegData = frameData.slice(jpegStartPos, jpegStartPos + contentLength);
+            
+            // Simple JPEG validation: Check for JPEG magic bytes (FF D8 FF)
+            if (jpegData[0] === 0xFF && jpegData[1] === 0xD8 && jpegData[2] === 0xFF) {
+                // Store the latest frame
+                this.latestFrame = jpegData;
+                this.lastFrameTime = Date.now();
+                
+                // Emit the frame
+                this.emit('frame', jpegData);
+            } else {
+                console.warn('Invalid JPEG data (wrong magic bytes)');
+            }
+        } catch (error) {
+            console.error('Error processing frame:', error);
+        }
+    }
+
+    _findPartialBoundaryAtEnd() {
         // Check if the end of the buffer contains part of a boundary pattern
         const boundaryLen = this.boundaryPattern.length;
         
         // Check for progressively smaller parts of the boundary at the end of the buffer
         for (let i = boundaryLen - 1; i > 0; i--) {
             const partialBoundary = this.boundaryPattern.slice(0, i);
-            if (this.buffer.indexOf(partialBoundary, this.buffer.length - i) !== -1) {
+            const searchStart = Math.max(0, this.buffer.length - i);
+            
+            if (this.buffer.slice(searchStart).indexOf(partialBoundary) !== -1) {
                 return i;  // Return how many bytes might be part of a boundary
             }
         }
@@ -175,6 +235,7 @@ class CameraStream extends EventEmitter {
             this.req = null;
         }
         this.connected = false;
+        this.buffer = Buffer.alloc(0); // Clear the buffer
         this.emit('disconnected', 'Manually disconnected');
     }
 

@@ -163,7 +163,13 @@ cameraStream.on('frame', (frameBuffer) => {
         // Convert frame buffer to base64
         const frameBase64 = frameBuffer.toString('base64');
         
-        console.log(`Received camera frame: ${frameBuffer.length} bytes`);
+        // Log less frequently to avoid console spam
+        if (Math.random() < 0.01) { // Log approximately 1% of frames
+            console.log(`Received camera frame: ${frameBuffer.length} bytes`);
+        }
+        
+        // Track how many clients we're sending to for logging
+        let activeClients = 0;
         
         // Send frame to all connected frontend clients that requested the stream
         frontendConnections.forEach(client => {
@@ -172,8 +178,14 @@ cameraStream.on('frame', (frameBuffer) => {
                     type: 'camera_frame',
                     data: frameBase64
                 }));
+                activeClients++;
             }
         });
+        
+        // Occasionally log how many clients are receiving frames
+        if (Math.random() < 0.01) { // Log approximately 1% of the time
+            console.log(`Streaming to ${activeClients} active clients`);
+        }
     } catch (error) {
         console.error('Error processing camera frame:', error);
     }
@@ -204,6 +216,19 @@ cameraStream.on('disconnected', () => {
         }
     });
 });
+
+// Add some metrics logging every minute
+setInterval(() => {
+    const activeConnections = Array.from(frontendConnections).filter(
+        client => client.readyState === WebSocket.OPEN
+    ).length;
+    
+    console.log(`--- Stream Status ---`);
+    console.log(`Camera connected: ${cameraStream.isStreamConnected()}`);
+    console.log(`Active frontend connections: ${activeConnections}`);
+    console.log(`Latest frame received: ${cameraStream.lastFrameTime ? new Date(cameraStream.lastFrameTime).toISOString() : 'never'}`);
+    console.log(`--------------------`);
+}, 60000);
 
 // Enable CORS for development
 app.use(cors());
