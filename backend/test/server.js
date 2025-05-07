@@ -1,29 +1,50 @@
-
 const express = require('express');
-const { createProxyMiddleware } = require('http-proxy-middleware');
 const path = require('path');
+const http = require('http');
 
 const app = express();
 const PORT = 3000;
 
 // ESP32-CAM stream URL
-const ESP32_STREAM_URL = 'http://192.168.4.1';
+const ESP32_STREAM_URL = 'http://192.168.4.1/stream';
 
 // Serve static files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Proxy the ESP32 stream requests
-app.use('/stream', createProxyMiddleware({
-  target: ESP32_STREAM_URL,
-  changeOrigin: true,
-  pathRewrite: {
-    '^/stream': '/stream' // keep the /stream path when forwarding
-  },
-  onError: (err, req, res) => {
-    console.error('Proxy error:', err);
-    res.status(500).send('Error connecting to ESP32-CAM stream');
-  }
-}));
+// Stream endpoint - handle the ESP32-CAM stream directly
+app.get('/stream', (req, res) => {
+  res.setHeader('Content-Type', 'multipart/x-mixed-replace; boundary=frame');
+  
+  // Create HTTP request to ESP32-CAM
+  const streamReq = http.get(ESP32_STREAM_URL, (streamRes) => {
+    // Forward the headers that we want to keep
+    res.setHeader('Content-Type', streamRes.headers['content-type']);
+    
+    // Pipe the stream directly to our response
+    streamRes.pipe(res);
+    
+    // Handle errors from the ESP32-CAM stream
+    streamRes.on('error', (err) => {
+      console.error('Stream error:', err);
+      if (!res.headersSent) {
+        res.status(500).send('Error connecting to ESP32-CAM stream');
+      }
+    });
+  });
+  
+  // Handle errors with the ESP32-CAM connection
+  streamReq.on('error', (err) => {
+    console.error('Connection error:', err);
+    if (!res.headersSent) {
+      res.status(500).send('Error connecting to ESP32-CAM stream');
+    }
+  });
+  
+  // Clean up when client disconnects
+  req.on('close', () => {
+    streamReq.destroy();
+  });
+});
 
 // Start server
 app.listen(PORT, () => {
