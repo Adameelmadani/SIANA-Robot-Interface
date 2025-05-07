@@ -1,0 +1,14 @@
+
+{
+  "name": "esp32-cam-stream-server",
+  "version": "1.0.0",
+  "description": "Server for ESP32-CAM video stream",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "http-proxy-middleware": "^2.0.6"
+  }
+}

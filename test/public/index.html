@@ -1,0 +1,61 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ESP32-CAM Stream</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      text-align: center;
+    }
+    .stream-container {
+      margin-top: 20px;
+    }
+    .stream-container img {
+      max-width: 100%;
+      border: 1px solid #ddd;
+    }
+    .status {
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #f8f9fa;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <h1>ESP32-CAM Live Stream</h1>
+  
+  <div class="stream-container">
+    <img id="stream" src="/stream" alt="ESP32-CAM Stream">
+  </div>
+  
+  <div class="status" id="status">Connecting to stream...</div>
+
+  <script>
+    const streamImg = document.getElementById('stream');
+    const statusDiv = document.getElementById('status');
+    
+    // Monitor stream connection
+    streamImg.onload = function() {
+      statusDiv.textContent = "Stream connected";
+      statusDiv.style.color = "green";
+    };
+    
+    streamImg.onerror = function() {
+      statusDiv.textContent = "Stream disconnected. Make sure your computer is connected to the ESP32-CAM WiFi network.";
+      statusDiv.style.color = "red";
+      
+      // Try to reconnect after a few seconds
+      setTimeout(() => {
+        streamImg.src = "/stream?" + new Date().getTime();
+      }, 5000);
+    };
+  </script>
+</body>
+</html>
