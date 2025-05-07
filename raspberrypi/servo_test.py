@@ -29,7 +29,7 @@ END_POSITION_DEG = START_POSITION_DEG + MOVEMENT_RANGE_DEG # Will be 45 + 25 = 7
 
 # Parameters for slow movement
 SLOW_MOVE_STEP_DEG = 1.0      # Move 1 degree at a time
-SLOW_MOVE_DELAY_S = 0.1    # Pause 100ms between steps. Adjust if too fast/slow.
+SLOW_MOVE_DELAY_S = 0.01    # Pause 100ms between steps. Adjust if too fast/slow.
                            # (You had 10 in your paste, which is very slow; 0.1 is a moderate slow)
 
 # Ensure END_POSITION_DEG is within reasonable servo limits
