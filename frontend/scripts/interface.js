@@ -39,32 +39,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Handle camera frame data
                 if (message.type === 'camera_frame') {
-                    console.log('Received camera frame, length:', message.data.length);
                     updateCameraFrame(message.data);
                 }
                 
                 // Handle stream status updates
                 if (message.type === 'stream_status') {
-                    console.log('Stream status update:', message.connected);
                     updateStreamStatus(message.connected);
-                    
-                    // If stream is connected but no frames are coming through,
-                    // request the stream again after a short delay
-                    if (message.connected) {
-                        setTimeout(() => {
-                            if (document.getElementById('camera-stream').src.includes('data:image/gif')) {
-                                console.log('No frames received yet, requesting stream again...');
-                                requestCameraStream();
-                            }
-                        }, 5000);
-                    }
                 }
                 
                 // Handle other messages as before
                 console.log('Message from server:', message);
             } catch (e) {
                 console.error('Error parsing message from server:', e);
-                console.error('Raw message data:', event.data);
             }
         };
     }
@@ -76,13 +62,6 @@ document.addEventListener('DOMContentLoaded', () => {
             socket.send(JSON.stringify({
                 type: 'stream_request'
             }));
-            
-            // Set a placeholder loading image to indicate we're waiting for the stream
-            const img = document.getElementById('camera-stream');
-            if (img && img.src.includes('data:image/gif')) {
-                img.style.opacity = '0.5';
-                document.getElementById('stream-status').textContent = 'Connexion au flux vidéo...';
-            }
         }
     }
     
@@ -90,20 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateCameraFrame(base64Data) {
         const img = document.getElementById('camera-stream');
         if (img) {
-            // Only update if we have actual data
-            if (base64Data && base64Data.length > 100) { // Basic validation of data
-                img.src = `data:image/jpeg;base64,${base64Data}`;
-                img.style.opacity = '1';
-                
-                // Update stream status to connected
-                const streamStatus = document.getElementById('stream-status');
-                if (streamStatus) {
-                    streamStatus.textContent = 'Flux vidéo actif';
-                    streamStatus.className = 'stream-status connected';
-                }
-            } else {
-                console.error('Received invalid camera frame data', base64Data);
-            }
+            img.src = `data:image/jpeg;base64,${base64Data}`;
         }
     }
     
