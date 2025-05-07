@@ -17,6 +17,11 @@ let streamConnection = null;
 let reconnectTimer = null;
 const RECONNECT_DELAY = 5000; // 5 seconds
 
+// Store the latest boundary and frame data
+let currentBoundary = '';
+let currentFrameBuffer = Buffer.alloc(0);
+let isConnectedToCamera = false;
+
 // Connect to ESP32-CAM stream
 function connectToStream() {
   if (reconnectTimer) {
@@ -25,9 +30,10 @@ function connectToStream() {
   }
 
   console.log('Connecting to ESP32-CAM stream...');
+  isConnectedToCamera = false;
   
   const request = http.get(ESP32_STREAM_URL, (response) => {
-    console.log('Connected to ESP32-CAM stream');
+    console.log('Connected to ESP32-CAM stream:', response.statusCode);
     
     if (response.statusCode !== 200) {
       console.error(`Unexpected status code: ${response.statusCode}`);
@@ -43,52 +49,101 @@ function connectToStream() {
     }
 
     streamConnection = response;
+    isConnectedToCamera = true;
+    
+    // Extract boundary from content-type header
+    currentBoundary = contentType.split('boundary=')[1];
+    console.log(`Stream boundary: ${currentBoundary}`);
     
     let buffer = Buffer.alloc(0);
-    const boundary = contentType.split('boundary=')[1];
-    const boundaryBuffer = Buffer.from(`\r\n--${boundary}\r\n`);
-    let headersSent = false;
     
     response.on('data', (chunk) => {
       // Append new data to buffer
       buffer = Buffer.concat([buffer, chunk]);
       
-      // Find the boundary markers and extract frames
-      let boundaryIndex;
-      while ((boundaryIndex = buffer.indexOf(boundaryBuffer)) !== -1) {
-        const frameData = buffer.slice(0, boundaryIndex + boundaryBuffer.length);
-        buffer = buffer.slice(boundaryIndex + boundaryBuffer.length);
-        
-        // Send frame to all connected clients
-        for (const client of clients) {
-          if (!headersSent && client.writable) {
-            client.setHeader('Content-Type', `multipart/x-mixed-replace; boundary=${boundary}`);
-            headersSent = true;
-          }
-          if (client.writable) {
-            client.write(frameData);
-          }
-        }
-      }
+      // Process the buffer to find frames
+      processBuffer(buffer).then(remaining => {
+        buffer = remaining;
+      }).catch(err => {
+        console.error('Error processing buffer:', err);
+      });
     });
     
     response.on('error', (err) => {
       console.error('Stream error:', err);
+      isConnectedToCamera = false;
       scheduleReconnect();
     });
     
     response.on('end', () => {
       console.log('Stream ended');
+      isConnectedToCamera = false;
       scheduleReconnect();
     });
   });
   
   request.on('error', (err) => {
     console.error('Connection error:', err);
+    isConnectedToCamera = false;
     scheduleReconnect();
   });
   
   streamConnection = request;
+}
+
+async function processBuffer(buffer) {
+  if (!currentBoundary) return buffer;
+  
+  const boundaryTag = `--${currentBoundary}`;
+  const startBoundaryPattern = Buffer.from(`\r\n${boundaryTag}`);
+  const endBoundaryPattern = Buffer.from(`${boundaryTag}--`);
+  
+  let startIdx = buffer.indexOf(startBoundaryPattern);
+  
+  if (startIdx === -1) {
+    // No boundary found, keep the entire buffer for next time
+    return buffer;
+  }
+  
+  // We found a boundary, let's extract the frame
+  const frameStart = startIdx + startBoundaryPattern.length;
+  
+  // Look for the next boundary or end boundary
+  let nextStartIdx = buffer.indexOf(startBoundaryPattern, frameStart);
+  const endIdx = buffer.indexOf(endBoundaryPattern, frameStart);
+  
+  if (nextStartIdx === -1 && endIdx === -1) {
+    // No end of frame yet, keep everything
+    return buffer;
+  }
+  
+  let frameEnd;
+  if (endIdx !== -1 && (nextStartIdx === -1 || endIdx < nextStartIdx)) {
+    // We found an end boundary
+    frameEnd = endIdx;
+  } else {
+    // We found the next start boundary
+    frameEnd = nextStartIdx;
+  }
+  
+  // Extract the frame data (including headers)
+  const frameData = buffer.slice(frameStart, frameEnd);
+  
+  // Store the current frame
+  currentFrameBuffer = Buffer.concat([
+    Buffer.from(`--${currentBoundary}\r\n`),
+    frameData
+  ]);
+  
+  // Send this frame to all connected clients
+  for (const client of clients) {
+    if (client.writable) {
+      client.write(currentFrameBuffer);
+    }
+  }
+  
+  // Return the buffer after this frame for further processing
+  return buffer.slice(frameEnd);
 }
 
 function scheduleReconnect() {
@@ -110,16 +165,24 @@ connectToStream();
 app.get('/stream', (req, res) => {
   console.log('New client connected');
   
+  // Set proper headers for MJPEG stream
+  res.writeHead(200, {
+    'Cache-Control': 'no-cache, private',
+    'Pragma': 'no-cache',
+    'Connection': 'close',
+    'Content-Type': `multipart/x-mixed-replace; boundary=${currentBoundary}`
+  });
+  
+  // If we have a current frame, send it immediately
+  if (currentFrameBuffer.length > 0 && isConnectedToCamera) {
+    res.write(currentFrameBuffer);
+  }
+  
   // Add this client to our set
   clients.add(res);
   
-  // Set proper headers for MJPEG stream
-  res.setHeader('Cache-Control', 'no-cache, private');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Connection', 'close');
-  
   // If we're not currently connected to the stream, try to reconnect
-  if (!streamConnection) {
+  if (!streamConnection || !isConnectedToCamera) {
     connectToStream();
   }
   
@@ -127,6 +190,14 @@ app.get('/stream', (req, res) => {
   req.on('close', () => {
     console.log('Client disconnected');
     clients.delete(res);
+  });
+});
+
+// API endpoint to check camera status
+app.get('/api/status', (req, res) => {
+  res.json({
+    connected: isConnectedToCamera,
+    clientCount: clients.size
   });
 });
 
