@@ -150,10 +150,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (socket && socket.readyState === WebSocket.OPEN) {
             console.log(`Sending robot command: ${direction} - ${isActive}`);
             
-            const message = {
-                type: 'control',
-                direction: direction,
-                isActive: isActive
+            const message = 
+            {
+                type: "servo",
+                motor_id: 0,
+                value: "right",
+                is_active: true
             };
             
             socket.send(JSON.stringify(message));
