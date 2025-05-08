@@ -47,6 +47,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateStreamStatus(message.connected);
                 }
                 
+                // Handle detection frame updates
+                if (message.type === 'detection_frame') {
+                    updateDetectionFrame(message.data);
+                }
+                
+                // Handle detection status
+                if (message.type === 'detection_status') {
+                    updateDetectionStatus(message.enabled);
+                }
+                
                 // Handle other messages as before
                 console.log('Message from server:', message);
             } catch (e) {
@@ -73,6 +83,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    // Update detection frame with received data
+    function updateDetectionFrame(base64Data) {
+        const img = document.getElementById('detection-result');
+        if (img) {
+            img.src = `data:image/jpeg;base64,${base64Data}`;
+            // Show the detection result container
+            document.getElementById('detection-result-container').style.display = 'block';
+            // Hide the loading message
+            document.getElementById('detection-loading-container').style.display = 'none';
+        }
+    }
+    
     // Update stream status in UI
     function updateStreamStatus(connected) {
         const cameraStream = document.getElementById('camera-stream');
@@ -88,6 +110,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 streamStatus.className = 'stream-status disconnected';
                 cameraStream.style.opacity = '0.5';
             }
+        }
+    }
+    
+    // Update detection status in UI
+    function updateDetectionStatus(enabled) {
+        const status = document.getElementById('detection-status');
+        if (status) {
+            status.textContent = enabled ? 'Détection d\'objets active' : 'Détection d\'objets inactive';
+            status.className = enabled ? 'detection-status active' : 'detection-status inactive';
         }
     }
     
@@ -556,6 +587,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (this.checked) {
             imageDetectionContainer.style.display = 'block';
             realtimeDetectionContainer.style.display = 'none';
+            
+            // Disable real-time detection
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: 'detection_mode',
+                    enabled: false
+                }));
+            }
         }
     });
 
@@ -563,8 +602,49 @@ document.addEventListener('DOMContentLoaded', () => {
         if (this.checked) {
             imageDetectionContainer.style.display = 'none';
             realtimeDetectionContainer.style.display = 'block';
+            
+            // Show the loading message
+            document.getElementById('detection-loading-container').style.display = 'flex';
+            document.getElementById('detection-result-container').style.display = 'none';
+            
+            // Request camera stream if not already active
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                // First ensure we're getting the stream
+                socket.send(JSON.stringify({
+                    type: 'stream_request'
+                }));
+                
+                // Then enable real-time detection
+                socket.send(JSON.stringify({
+                    type: 'detection_mode',
+                    enabled: true
+                }));
+                
+                // Log operation
+                logOperation('Détection', 'Mode temps réel activé');
+            }
         }
     });
+
+    // Toggle detection button
+    const toggleDetectionBtn = document.getElementById('toggle-detection-btn');
+    if (toggleDetectionBtn) {
+        toggleDetectionBtn.addEventListener('click', function() {
+            const isActive = toggleDetectionBtn.classList.contains('active');
+            
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({
+                    type: 'detection_mode',
+                    enabled: !isActive
+                }));
+                
+                toggleDetectionBtn.classList.toggle('active');
+                toggleDetectionBtn.textContent = isActive ? 'Activer la détection' : 'Désactiver la détection';
+                
+                logOperation('Détection', isActive ? 'Détection désactivée' : 'Détection activée');
+            }
+        });
+    }
 
     // Clean up on page unload
     window.addEventListener('beforeunload', () => {

@@ -107,6 +107,7 @@ h1, h2, h3 {
     background-color: #333;
     border-radius: 5px;
     overflow: hidden;
+    margin-bottom: 10px;
 }
 
 #camera-stream {
@@ -562,4 +563,107 @@ th {
 
 .servo-btn:hover {
     background-color: var(--primary-color);
+}
+
+/* Real-time detection styles */
+.detection-status {
+    position: absolute;
+    top: 40px;
+    left: 10px;
+    padding: 5px 10px;
+    border-radius: 20px;
+    color: white;
+    font-size: 14px;
+    z-index: 2;
+}
+
+.detection-status.active {
+    background-color: var(--success-color);
+}
+
+.detection-status.inactive {
+    background-color: var(--warning-color);
+}
+
+.detection-controls {
+    margin-top: 10px;
+    display: flex;
+    justify-content: center;
+}
+
+#toggle-detection-btn {
+    padding: 10px 15px;
+    background-color: var(--secondary-color);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+#toggle-detection-btn.active {
+    background-color: var(--danger-color);
+}
+
+#toggle-detection-btn:hover {
+    background-color: var(--primary-color);
+}
+
+#toggle-detection-btn.active:hover {
+    background-color: var(--accent-color);
+}
+
+.loading-container {
+    width: 100%;
+    height: 300px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--secondary-color);
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(52, 152, 219, 0.3);
+    border-radius: 50%;
+    border-top-color: var(--secondary-color);
+    animation: spin 1s linear infinite;
+    margin-bottom: 15px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Make space for both status indicators */
+.stream-container {
+    position: relative;
+    width: 100%;
+    height: 350px;
+    background-color: #333;
+    border-radius: 5px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+/* Add split-screen view when detection is active */
+.split-view .stream-container {
+    width: 49%;
+    display: inline-block;
+}
+
+.split-view .result-container {
+    width: 49%;
+    display: inline-block;
+    vertical-align: top;
+}
+
+#detection-result {
+    width: 100%;
+    height: 300px;
+    object-fit: contain;
+    border-radius: 5px;
+    background-color: #333;
 }

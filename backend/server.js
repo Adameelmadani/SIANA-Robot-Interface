@@ -20,6 +20,8 @@ const wss = new WebSocket.Server({ server, path: '/robot' });
 // Store connections
 let frontendConnections = new Set();
 let piConnection = null;
+let processingQueue = []; // Queue for frames waiting to be processed
+let isProcessing = false; // Flag to prevent multiple simultaneous processing
 
 // Handle WebSocket connections
 wss.on('connection', (ws, req) => {
@@ -108,6 +110,18 @@ wss.on('connection', (ws, req) => {
                 }
             }
             
+            // Handle real-time detection toggle
+            if (!isRaspberryPi && data.type === 'detection_mode') {
+                ws.realTimeDetectionEnabled = data.enabled;
+                console.log(`Real-time detection ${data.enabled ? 'enabled' : 'disabled'} for client`);
+                
+                // Send confirmation
+                ws.send(JSON.stringify({
+                    type: 'detection_status',
+                    enabled: data.enabled
+                }));
+            }
+            
             // Handle stream cancellation request
             if (!isRaspberryPi && data.type === 'cancel_stream') {
                 ws.cameraStreamEnabled = false;
@@ -160,10 +174,140 @@ wss.on('connection', (ws, req) => {
     }
 });
 
+// Process frames for object detection
+async function processFrameForDetection(frameBuffer) {
+    if (!frameBuffer) return null;
+    
+    try {
+        // Save frame to temporary file
+        const tempDir = path.join(__dirname, 'temp');
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+        }
+        
+        const inputPath = path.join(tempDir, `frame_${Date.now()}.jpg`);
+        const outputPath = path.join(tempDir, `processed_${Date.now()}.jpg`);
+        
+        fs.writeFileSync(inputPath, frameBuffer);
+        
+        // Get the absolute path to the Python script
+        const pythonScriptPath = path.resolve(path.join(__dirname, '../ai/process_image.py'));
+        
+        // Determine which Python command to use based on OS
+        let pythonCommand = 'python';
+        if (process.platform === 'win32') {
+            try {
+                require('child_process').execSync('py --version');
+                pythonCommand = 'py';
+            } catch (error) {
+                console.log('Falling back to python command');
+            }
+        } else if (process.platform === 'darwin' || process.platform === 'linux') {
+            try {
+                require('child_process').execSync('python3 --version');
+                pythonCommand = 'python3';
+            } catch (error) {
+                console.log('Falling back to python command');
+            }
+        }
+        
+        return new Promise((resolve, reject) => {
+            const pythonProcess = spawn(pythonCommand, [
+                pythonScriptPath,
+                inputPath,
+                outputPath
+            ]);
+            
+            let pythonError = '';
+            pythonProcess.stderr.on('data', (data) => {
+                pythonError += data.toString();
+            });
+            
+            pythonProcess.on('close', (code) => {
+                if (code !== 0) {
+                    console.error(`Python error: ${pythonError}`);
+                    // Clean up files
+                    try {
+                        if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+                    } catch (err) {}
+                    reject(new Error(`Failed to process frame: ${pythonError}`));
+                    return;
+                }
+                
+                // Read the processed image file
+                try {
+                    if (!fs.existsSync(outputPath)) {
+                        reject(new Error('Processed file not found'));
+                        return;
+                    }
+                    
+                    const processedImage = fs.readFileSync(outputPath);
+                    const base64Image = Buffer.from(processedImage).toString('base64');
+                    
+                    // Clean up files
+                    try {
+                        fs.unlinkSync(inputPath);
+                        fs.unlinkSync(outputPath);
+                    } catch (err) {
+                        console.error('Error cleaning up temporary files:', err);
+                    }
+                    
+                    resolve(base64Image);
+                } catch (err) {
+                    console.error('Error reading processed image:', err);
+                    reject(err);
+                }
+            });
+        });
+    } catch (error) {
+        console.error('Error in processFrameForDetection:', error);
+        return null;
+    }
+}
+
+// Process the queue of frames
+async function processQueue() {
+    if (isProcessing || processingQueue.length === 0) return;
+    
+    isProcessing = true;
+    
+    try {
+        const { frameBuffer, clients } = processingQueue.shift();
+        
+        const base64Image = await processFrameForDetection(frameBuffer);
+        
+        if (base64Image) {
+            // Send processed frame to all clients who requested it
+            clients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN && client.realTimeDetectionEnabled) {
+                    client.send(JSON.stringify({
+                        type: 'detection_frame',
+                        data: base64Image
+                    }));
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Error in processQueue:', error);
+    } finally {
+        isProcessing = false;
+        
+        // Process next item in queue
+        if (processingQueue.length > 0) {
+            processQueue();
+        }
+    }
+}
+
 // Camera stream events
 esp32Cam.on('frame', (frameBuffer) => {
     // Convert frame buffer to base64
     const frameBase64 = frameBuffer.toString('base64');
+    
+    // Keep track of clients requesting real-time detection
+    const detectionClients = Array.from(frontendConnections).filter(
+        client => client.readyState === WebSocket.OPEN && client.realTimeDetectionEnabled
+    );
     
     // Send frame to all connected frontend clients that requested the stream
     frontendConnections.forEach(client => {
@@ -174,6 +318,20 @@ esp32Cam.on('frame', (frameBuffer) => {
             }));
         }
     });
+    
+    // If we have clients with real-time detection enabled and 
+    // the queue is not too large, add the frame to the processing queue
+    if (detectionClients.length > 0 && processingQueue.length < 2) {
+        processingQueue.push({
+            frameBuffer,
+            clients: detectionClients
+        });
+        
+        // Start processing if not already processing
+        if (!isProcessing) {
+            processQueue();
+        }
+    }
 });
 
 esp32Cam.on('connected', () => {
