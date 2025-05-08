@@ -563,3 +563,31 @@ th {
 .servo-btn:hover {
     background-color: var(--primary-color);
 }
+
+/* Stream options styles */
+.stream-options {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+}
+
+.stream-mode-btn {
+    padding: 8px 15px;
+    background-color: var(--secondary-color);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.stream-mode-btn:hover {
+    background-color: var(--primary-color);
+}
+
+#stream-mode-info {
+    font-size: 14px;
+    color: var(--secondary-color);
+}

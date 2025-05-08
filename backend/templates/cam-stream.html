@@ -1,0 +1,43 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ESP32-CAM Direct Stream</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            text-align: center;
+            background-color: #f0f0f0;
+        }
+        #video-feed {
+            width: 80%;
+            max-width: 800px;
+            margin: 20px auto;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            background-color: #ffffff;
+            display: block;
+        }
+        h1 {
+            color: #333;
+            margin-top: 20px;
+        }
+    </style>
+    <script>
+        // Function to reload the image with a cache-busting query parameter
+        function updateFrame() {
+            const img = document.getElementById('video-feed');
+            // Use a timestamp as a cache-buster
+            img.src = `/frame?ts=${new Date().getTime()}`;
+        }
+
+        // Update the frame every 100 milliseconds (adjust as needed)
+        setInterval(updateFrame, 100);
+    </script>
+</head>
+<body>
+    <h1>ESP32-CAM Direct Stream</h1>
+    <img id="video-feed" src="/frame" alt="Video Stream">
+</body>
+</html>

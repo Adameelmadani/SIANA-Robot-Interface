@@ -7,8 +7,9 @@ const cors = require('cors');
 const http = require('http');
 const WebSocket = require('ws');
 
-// Import our camera stream module
+// Import our camera stream modules
 const cameraStream = require('./esp32-cam/camera-rec');
+const esp32Cam = require('./esp32-cam');
 
 const app = express();
 const server = http.createServer(app);
@@ -196,6 +197,34 @@ cameraStream.on('disconnected', () => {
     });
 });
 
+// ESP32Cam direct stream events
+esp32Cam.on('connected', () => {
+    console.log('ESP32-CAM direct stream connected');
+});
+
+esp32Cam.on('disconnected', () => {
+    console.log('ESP32-CAM direct stream disconnected');
+});
+
+// Add routes for serving frames directly (not through WebSockets)
+app.get('/cam-stream', (req, res) => {
+    res.sendFile(path.join(__dirname, 'templates', 'cam-stream.html'));
+});
+
+app.get('/frame', (req, res) => {
+    const frame = esp32Cam.getLatestFrame();
+    if (!frame) {
+        res.status(404).send('No frame available');
+        return;
+    }
+    
+    res.writeHead(200, {
+        'Content-Type': 'image/jpeg',
+        'Content-Length': frame.length
+    });
+    res.end(frame);
+});
+
 // Enable CORS for development
 app.use(cors());
 
@@ -353,7 +382,9 @@ app.get('*', (req, res) => {
 server.listen(port, () => {
     console.log(`Server is running on http://localhost:${port}`);
     console.log(`WebSocket server is running on ws://localhost:${port}/robot`);
+    console.log(`Direct camera stream available at http://localhost:${port}/cam-stream`);
     
     // Try to connect to the ESP32-CAM when server starts
     cameraStream.connect();
+    esp32Cam.start();
 });
