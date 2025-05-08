@@ -71,6 +71,21 @@ wss.on('connection', (ws, req) => {
                     }));
                 }
             }
+            
+            // Handle servo motor messages from frontend to Pi
+            if (!isRaspberryPi && data.type === 'servo') {
+                if (piConnection && piConnection.readyState === WebSocket.OPEN) {
+                    piConnection.send(JSON.stringify(data));
+                    console.log(`Servo command forwarded to Pi: Motor ${data.motor_id}, Direction: ${data.value}, Active: ${data.is_active}`);
+                } else {
+                    console.log('Cannot forward servo command: Pi not connected');
+                    // Inform the client that Pi isn't connected
+                    ws.send(JSON.stringify({
+                        type: 'error',
+                        message: 'Raspberry Pi is not connected'
+                    }));
+                }
+            }
 
             // Handle stream request from frontend
             if (!isRaspberryPi && data.type === 'stream_request') {

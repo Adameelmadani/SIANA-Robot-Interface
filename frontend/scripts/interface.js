@@ -145,6 +145,29 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // Servo motor control buttons
+    const servoButtons = document.querySelectorAll('.servo-btn');
+    
+    servoButtons.forEach(button => {
+        button.addEventListener('mousedown', () => {
+            const [servoPrefix, direction] = button.id.split('-');
+            const motorId = parseInt(servoPrefix.replace('servo', ''));
+            controlServo(motorId, direction, true);
+        });
+        
+        button.addEventListener('mouseup', () => {
+            const [servoPrefix, direction] = button.id.split('-');
+            const motorId = parseInt(servoPrefix.replace('servo', ''));
+            controlServo(motorId, direction, false);
+        });
+        
+        button.addEventListener('mouseleave', () => {
+            const [servoPrefix, direction] = button.id.split('-');
+            const motorId = parseInt(servoPrefix.replace('servo', ''));
+            controlServo(motorId, direction, false);
+        });
+    });
+
     // Updated controlRobot function to use WebSockets
     function controlRobot(direction, isActive) {
         if (socket && socket.readyState === WebSocket.OPEN) {
@@ -161,6 +184,26 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             console.error('WebSocket is not connected');
             addDefect('Commande non envoyée: WebSocket déconnecté', 'critical');
+        }
+    }
+    
+    // Function to control servo motors
+    function controlServo(motorId, value, isActive) {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            console.log(`Sending servo command: Motor ${motorId}, Direction: ${value}, Active: ${isActive}`);
+            
+            const message = {
+                type: 'servo',
+                motor_id: motorId,
+                value: value,
+                is_active: isActive
+            };
+            
+            socket.send(JSON.stringify(message));
+            logOperation(`Servo ${motorId}`, `Direction: ${value}`);
+        } else {
+            console.error('WebSocket is not connected');
+            addDefect('Commande servo non envoyée: WebSocket déconnecté', 'critical');
         }
     }
 

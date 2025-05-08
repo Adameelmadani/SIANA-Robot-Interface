@@ -520,3 +520,46 @@ th {
 .coming-soon-message p {
     font-size: 18px;
 }
+
+/* Servo control styles */
+.servo-controls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 20px;
+    margin-top: 15px;
+}
+
+.servo-container {
+    flex: 1;
+    min-width: 150px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.servo-container h3 {
+    font-size: 16px;
+    margin-bottom: 10px;
+}
+
+.servo-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.servo-btn {
+    width: 50px;
+    height: 50px;
+    font-size: 20px;
+    border-radius: 8px;
+    border: none;
+    background-color: var(--secondary-color);
+    color: white;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.servo-btn:hover {
+    background-color: var(--primary-color);
+}
