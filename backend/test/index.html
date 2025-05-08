@@ -9,14 +9,14 @@
             background-color: #f0f0f0;
         }
         #video-feed {
-            width: 80%; /* Make the video feed take up 80% of the container width */
-            max-width: 800px; /* Limit the maximum width */
-            margin: 20px auto; /* Center the video feed horizontally, add some margin */
+            width: 80%;
+            max-width: 800px;
+            margin: 20px auto;
             border: 1px solid #ccc;
-            border-radius: 8px; /* Add rounded corners */
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Add a shadow for better visual appearance */
-            background-color: #ffffff; /* Ensure the video feed background is white or a light color */
-            display: block; /* Ensure the image is treated as a block element */
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            background-color: #ffffff;
+            display: block;
         }
         h1 {
             color: #333;
@@ -24,14 +24,10 @@
         }
     </style>
     <script>
-        // Function to reload the image with a cache-busting query parameter
         function updateFrame() {
             const img = document.getElementById('video-feed');
-            // Use a timestamp as a cache-buster.
             img.src = `/frame?ts=${new Date().getTime()}`;
         }
-
-        // Update the frame every 100 milliseconds (adjust as needed)
         setInterval(updateFrame, 100);
     </script>
 </head>
