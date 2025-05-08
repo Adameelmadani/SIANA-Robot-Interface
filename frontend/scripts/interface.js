@@ -566,8 +566,430 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // Detection Canvas Setup
+    const cameraStream = document.getElementById('camera-stream');
+    const detectionOverlay = document.getElementById('detection-overlay');
+    const toggleDetectionBtn = document.getElementById('toggle-detection');
+    const createAnnotationBtn = document.getElementById('create-annotation');
+    const manualAnnotationPanel = document.getElementById('manual-annotation-panel');
+    const annotationForm = document.getElementById('annotation-form');
+    const cancelAnnotationBtn = document.getElementById('cancel-annotation');
+    
+    // Context for drawing on canvas
+    const ctx = detectionOverlay ? detectionOverlay.getContext('2d') : null;
+    
+    // Detection state
+    let isDetectionActive = false;
+    let isAnnotationMode = false;
+    let currentAnnotation = null;
+    let isDrawing = false;
+    let startX, startY;
+    
+    // Update canvas dimensions to match the image
+    function updateCanvasDimensions() {
+        if (cameraStream && cameraStream.complete && detectionOverlay) {
+            detectionOverlay.width = cameraStream.clientWidth;
+            detectionOverlay.height = cameraStream.clientHeight;
+        }
+    }
+    
+    // When camera stream loads or window resizes, update dimensions
+    if (cameraStream) {
+        cameraStream.addEventListener('load', updateCanvasDimensions);
+        window.addEventListener('resize', updateCanvasDimensions);
+        
+        // Ensure initial dimensions are set
+        setTimeout(updateCanvasDimensions, 100);
+    }
+
+    // Toggle detection mode
+    if (toggleDetectionBtn) {
+        toggleDetectionBtn.addEventListener('click', () => {
+            isDetectionActive = !isDetectionActive;
+            
+            if (isDetectionActive) {
+                toggleDetectionBtn.innerHTML = '<i class="fa-solid fa-stop"></i> Désactiver la détection';
+                toggleDetectionBtn.classList.remove('success');
+                toggleDetectionBtn.classList.add('danger');
+                startDetection();
+                logOperation('Détection', 'Détection d\'objets activée');
+            } else {
+                toggleDetectionBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Activer la détection';
+                toggleDetectionBtn.classList.remove('danger');
+                toggleDetectionBtn.classList.add('success');
+                stopDetection();
+                logOperation('Détection', 'Détection d\'objets désactivée');
+            }
+        });
+    }
+
+    // Detection interval reference
+    let detectionInterval = null;
+    
+    // Start detection
+    function startDetection() {
+        if (!ctx) return;
+
+        // Clear any existing interval
+        if (detectionInterval) {
+            clearInterval(detectionInterval);
+        }
+        
+        // Start the detection loop
+        detectionInterval = setInterval(detectDefectsInCurrentFrame, 2000); // Every 2 seconds
+        
+        // Run detection immediately
+        detectDefectsInCurrentFrame();
+    }
+    
+    // Stop detection
+    function stopDetection() {
+        if (!ctx) return;
+
+        if (detectionInterval) {
+            clearInterval(detectionInterval);
+            detectionInterval = null;
+        }
+        
+        // Clear the canvas
+        ctx.clearRect(0, 0, detectionOverlay.width, detectionOverlay.height);
+    }
+    
+    // Process the current frame with the AI model
+    function detectDefectsInCurrentFrame() {
+        if (!cameraStream || !cameraStream.complete || cameraStream.naturalWidth === 0) {
+            console.log('Camera stream not ready yet');
+            return;
+        }
+        
+        // Create a canvas to get the current frame
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = cameraStream.clientWidth;
+        tempCanvas.height = cameraStream.clientHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(cameraStream, 0, 0, tempCanvas.width, tempCanvas.height);
+        
+        // Get the data URL and remove the prefix
+        const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
+        const base64Data = dataUrl.replace(/^data:image\/jpeg;base64,/, '');
+        
+        // Send to server for processing
+        fetch('/api/detect-defects', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ image: base64Data })
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Detection failed with status ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                // Clear previous detections
+                ctx.clearRect(0, 0, detectionOverlay.width, detectionOverlay.height);
+                
+                // Draw the bounding boxes
+                drawDetections(data.detections);
+                
+                // Log if defects were found
+                if (data.detections.length > 0) {
+                    logOperation('Détection', `${data.detections.length} défaut(s) détecté(s)`);
+                    
+                    // Add defects to the defects panel
+                    data.detections.forEach(detection => {
+                        addDefect(`Défaut détecté: ${detection.defect_type} (${Math.round(detection.confidence * 100)}%)`, 
+                                 detection.confidence > 0.7 ? 'critical' : 'warning');
+                    });
+                }
+            } else {
+                console.error('Detection error:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error detecting defects:', error);
+            addDefect('Erreur de détection d\'objets', 'critical');
+        });
+    }
+    
+    // Draw detection boxes on the canvas
+    function drawDetections(detections) {
+        if (!ctx) return;
+        
+        detections.forEach(detection => {
+            // Scale coordinates based on canvas dimensions vs original image
+            const scaleX = detectionOverlay.width / cameraStream.naturalWidth;
+            const scaleY = detectionOverlay.height / cameraStream.naturalHeight;
+            
+            const x1 = detection.x1 * scaleX;
+            const y1 = detection.y1 * scaleY;
+            const width = (detection.x2 - detection.x1) * scaleX;
+            const height = (detection.y2 - detection.y1) * scaleY;
+            
+            // Draw rectangle
+            ctx.strokeStyle = '#3498db';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(x1, y1, width, height);
+            
+            // Draw semi-transparent fill
+            ctx.fillStyle = 'rgba(52, 152, 219, 0.2)';
+            ctx.fillRect(x1, y1, width, height);
+            
+            // Draw label
+            ctx.fillStyle = '#3498db';
+            ctx.fillRect(x1, y1 - 20, 100, 20);
+            ctx.fillStyle = 'white';
+            ctx.font = '12px Arial';
+            ctx.fillText(`${detection.defect_type} ${Math.round(detection.confidence * 100)}%`, x1 + 5, y1 - 5);
+        });
+    }
+    
+    // Toggle manual annotation mode
+    if (createAnnotationBtn) {
+        createAnnotationBtn.addEventListener('click', () => {
+            if (!isAnnotationMode) {
+                startAnnotationMode();
+            } else {
+                stopAnnotationMode();
+            }
+        });
+    }
+    
+    // Start annotation mode
+    function startAnnotationMode() {
+        if (!ctx) return;
+        
+        isAnnotationMode = true;
+        createAnnotationBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> Annuler l\'annotation';
+        createAnnotationBtn.classList.add('danger');
+        document.querySelector('.canvas-container').classList.add('annotation-mode');
+        
+        // Stop detection if it's running
+        if (isDetectionActive) {
+            toggleDetectionBtn.click();
+        }
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, detectionOverlay.width, detectionOverlay.height);
+        
+        logOperation('Annotation', 'Mode annotation manuelle activé');
+    }
+    
+    // Stop annotation mode
+    function stopAnnotationMode() {
+        if (!ctx) return;
+        
+        isAnnotationMode = false;
+        createAnnotationBtn.innerHTML = '<i class="fa-solid fa-draw-polygon"></i> Annotation manuelle';
+        createAnnotationBtn.classList.remove('danger');
+        document.querySelector('.canvas-container').classList.remove('annotation-mode');
+        manualAnnotationPanel.style.display = 'none';
+        
+        // Clear canvas
+        ctx.clearRect(0, 0, detectionOverlay.width, detectionOverlay.height);
+        
+        // Reset current annotation
+        currentAnnotation = null;
+        
+        logOperation('Annotation', 'Mode annotation manuelle désactivé');
+    }
+    
+    // Handle mouse down event for drawing annotation
+    if (detectionOverlay) {
+        detectionOverlay.addEventListener('mousedown', (e) => {
+            if (!isAnnotationMode) return;
+            
+            isDrawing = true;
+            
+            const rect = detectionOverlay.getBoundingClientRect();
+            startX = e.clientX - rect.left;
+            startY = e.clientY - rect.top;
+            
+            // Clear previous annotation
+            ctx.clearRect(0, 0, detectionOverlay.width, detectionOverlay.height);
+        });
+        
+        // Handle mouse move event for drawing annotation
+        detectionOverlay.addEventListener('mousemove', (e) => {
+            if (!isAnnotationMode || !isDrawing) return;
+            
+            const rect = detectionOverlay.getBoundingClientRect();
+            const currentX = e.clientX - rect.left;
+            const currentY = e.clientY - rect.top;
+            
+            // Clear previous drawing
+            ctx.clearRect(0, 0, detectionOverlay.width, detectionOverlay.height);
+            
+            // Draw the rectangle
+            const width = currentX - startX;
+            const height = currentY - startY;
+            
+            ctx.strokeStyle = '#e74c3c';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(startX, startY, width, height);
+            
+            // Draw semi-transparent fill
+            ctx.fillStyle = 'rgba(231, 76, 60, 0.2)';
+            ctx.fillRect(startX, startY, width, height);
+        });
+        
+        // Handle mouse up event for drawing annotation
+        detectionOverlay.addEventListener('mouseup', (e) => {
+            if (!isAnnotationMode || !isDrawing) return;
+            
+            isDrawing = false;
+            
+            const rect = detectionOverlay.getBoundingClientRect();
+            const endX = e.clientX - rect.left;
+            const endY = e.clientY - rect.top;
+            
+            // Create the annotation object
+            currentAnnotation = {
+                x1: Math.min(startX, endX),
+                y1: Math.min(startY, endY),
+                x2: Math.max(startX, endX),
+                y2: Math.max(startY, endY),
+                width: Math.abs(endX - startX),
+                height: Math.abs(endY - startY)
+            };
+            
+            // Show the annotation form
+            manualAnnotationPanel.style.display = 'block';
+        });
+    }
+    
+    // Cancel annotation button
+    if (cancelAnnotationBtn) {
+        cancelAnnotationBtn.addEventListener('click', () => {
+            manualAnnotationPanel.style.display = 'none';
+            ctx.clearRect(0, 0, detectionOverlay.width, detectionOverlay.height);
+            currentAnnotation = null;
+        });
+    }
+    
+    // Handle annotation form submission
+    if (annotationForm) {
+        annotationForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            if (!currentAnnotation) {
+                alert('Veuillez dessiner une zone sur l\'image d\'abord.');
+                return;
+            }
+            
+            // Get form data
+            const defectType = document.getElementById('defect-type').value;
+            const defectSeverity = document.getElementById('defect-severity').value;
+            const defectNotes = document.getElementById('defect-notes').value;
+            
+            // Create a canvas to get the current frame
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = cameraStream.clientWidth;
+            tempCanvas.height = cameraStream.clientHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.drawImage(cameraStream, 0, 0, tempCanvas.width, tempCanvas.height);
+            
+            // Get the data URL and remove the prefix
+            const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
+            const base64Data = dataUrl.replace(/^data:image\/jpeg;base64,/, '');
+            
+            // Add more information to the annotation
+            const completeAnnotation = {
+                ...currentAnnotation,
+                defect_type: defectType,
+                severity: defectSeverity,
+                notes: defectNotes,
+                timestamp: new Date().toISOString(),
+                created_by: "Operator" // Could be replaced with actual user info
+            };
+            
+            // Send to server for processing
+            fetch('/api/save-annotation', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    image: base64Data,
+                    annotation: completeAnnotation 
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Save failed with status ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    logOperation('Annotation', `Défaut "${defectType}" de sévérité "${defectSeverity}" enregistré`);
+                    
+                    // Also add to defects panel
+                    const severityClass = defectSeverity === 'critical' || defectSeverity === 'high' ? 'critical' : 'warning';
+                    addDefect(`Défaut annoté: ${defectType} (${defectSeverity})`, severityClass);
+                    
+                    // Reset form and hide panel
+                    annotationForm.reset();
+                    manualAnnotationPanel.style.display = 'none';
+                    
+                    // Clear canvas
+                    ctx.clearRect(0, 0, detectionOverlay.width, detectionOverlay.height);
+                    
+                    // Reset current annotation
+                    currentAnnotation = null;
+                    
+                    // Exit annotation mode
+                    stopAnnotationMode();
+                    
+                    // Show success message
+                    alert('Annotation enregistrée avec succès.');
+                } else {
+                    console.error('Save error:', data.error);
+                    alert(`Erreur lors de l'enregistrement: ${data.error}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error saving annotation:', error);
+                alert(`Erreur lors de l'enregistrement: ${error.message}`);
+                addDefect('Erreur d\'enregistrement d\'annotation', 'critical');
+            });
+        });
+    }
+
+    // When mode is set to realtime
+    if (realtimeModeRadio) {
+        realtimeModeRadio.addEventListener('change', function() {
+            if (this.checked) {
+                imageDetectionContainer.style.display = 'none';
+                realtimeDetectionContainer.style.display = 'block';
+                
+                // Make sure canvas is properly sized
+                setTimeout(updateCanvasDimensions, 100);
+                
+                // Stop detection if it was running (in case user switches between modes)
+                if (isDetectionActive && toggleDetectionBtn) {
+                    isDetectionActive = false;
+                    toggleDetectionBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Activer la détection';
+                    toggleDetectionBtn.classList.remove('danger');
+                    toggleDetectionBtn.classList.add('success');
+                    stopDetection();
+                }
+                
+                // Exit annotation mode if active
+                if (isAnnotationMode) {
+                    stopAnnotationMode();
+                }
+            }
+        });
+    }
+
     // Clean up on page unload
     window.addEventListener('beforeunload', () => {
-        // No need to clear directStreamInterval as it's been removed
+        if (detectionInterval) {
+            clearInterval(detectionInterval);
+        }
     });
 });
