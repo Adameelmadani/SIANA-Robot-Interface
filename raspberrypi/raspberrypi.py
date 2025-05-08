@@ -8,7 +8,7 @@ from adafruit_servokit import ServoKit # Added for arm servos
 # Set up logging
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(_name_)
+logger = logging.getLogger(__name__)
 
 # WebSocket server URL (replace with your actual server address)
 SERVER_URL = "ws://192.168.12.1:3000/robot" # Replace if different
@@ -294,7 +294,7 @@ def connect_websocket():
     ws.run_forever()
 
 # --- Main Execution ---
-if _name_ == "_main_":
+if __name__ == "__main__":
     try:
         setup_dc_motors_gpio()
         setup_arm_servos() # Initialize ServoKit and arm servos
