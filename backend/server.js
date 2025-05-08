@@ -8,7 +8,7 @@ const http = require('http');
 const WebSocket = require('ws');
 
 // Import our camera stream module
-const cameraStream = require('./esp32-cam/camera-rec');
+const esp32Cam = require('./esp32-cam');
 
 const app = express();
 const server = http.createServer(app);
@@ -52,7 +52,7 @@ wss.on('connection', (ws, req) => {
                 
                 // Try to connect to the camera stream
                 const piIp = req.socket.remoteAddress.replace(/^::ffff:/, '');
-                cameraStream.connect(piIp);
+                esp32Cam.start(piIp);
                 
                 return;
             }
@@ -89,7 +89,7 @@ wss.on('connection', (ws, req) => {
 
             // Handle stream request from frontend
             if (!isRaspberryPi && data.type === 'stream_request') {
-                if (cameraStream.isStreamConnected()) {
+                if (esp32Cam.isConnected()) {
                     ws.cameraStreamEnabled = true;
                     console.log('Camera stream requested by client. Stream is active.');
                     
@@ -106,6 +106,12 @@ wss.on('connection', (ws, req) => {
                         message: 'Camera is not connected'
                     }));
                 }
+            }
+            
+            // Handle stream cancellation request
+            if (!isRaspberryPi && data.type === 'cancel_stream') {
+                ws.cameraStreamEnabled = false;
+                console.log('Camera stream cancelled by client');
             }
             
             // Forward Pi messages to all frontend clients
@@ -155,7 +161,7 @@ wss.on('connection', (ws, req) => {
 });
 
 // Camera stream events
-cameraStream.on('frame', (frameBuffer) => {
+esp32Cam.on('frame', (frameBuffer) => {
     // Convert frame buffer to base64
     const frameBase64 = frameBuffer.toString('base64');
     
@@ -170,8 +176,8 @@ cameraStream.on('frame', (frameBuffer) => {
     });
 });
 
-cameraStream.on('connected', () => {
-    console.log('Camera stream connected successfully');
+esp32Cam.on('connected', () => {
+    console.log('ESP32-CAM stream connected successfully');
     // Notify all frontend clients
     frontendConnections.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
@@ -183,8 +189,8 @@ cameraStream.on('connected', () => {
     });
 });
 
-cameraStream.on('disconnected', () => {
-    console.log('Camera stream disconnected');
+esp32Cam.on('disconnected', () => {
+    console.log('ESP32-CAM stream disconnected');
     // Notify all frontend clients
     frontendConnections.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
@@ -194,6 +200,25 @@ cameraStream.on('disconnected', () => {
             }));
         }
     });
+});
+
+// Add routes for serving frames directly (not through WebSockets)
+app.get('/cam-stream', (req, res) => {
+    res.sendFile(path.join(__dirname, 'templates', 'cam-stream.html'));
+});
+
+app.get('/frame', (req, res) => {
+    const frame = esp32Cam.getLatestFrame();
+    if (!frame) {
+        res.status(404).send('No frame available');
+        return;
+    }
+    
+    res.writeHead(200, {
+        'Content-Type': 'image/jpeg',
+        'Content-Length': frame.length
+    });
+    res.end(frame);
 });
 
 // Enable CORS for development
@@ -353,7 +378,8 @@ app.get('*', (req, res) => {
 server.listen(port, () => {
     console.log(`Server is running on http://localhost:${port}`);
     console.log(`WebSocket server is running on ws://localhost:${port}/robot`);
+    console.log(`Direct camera stream available at http://localhost:${port}/cam-stream`);
     
     // Try to connect to the ESP32-CAM when server starts
-    cameraStream.connect();
+    esp32Cam.start();
 });

@@ -2,6 +2,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // WebSocket connection
     let socket = null;
     
+    // Stream mode variables
+    let streamMode = 'websocket'; // 'websocket' or 'direct'
+    let directStreamInterval = null;
+    
     // Connect to server
     function connectWebSocket() {
         // Use the location of the current page to determine WebSocket URL
@@ -55,21 +59,70 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
     
-    // Request camera stream from server
+    // Toggle between WebSocket and direct stream
+    const toggleStreamModeBtn = document.getElementById('toggle-stream-mode');
+    const streamModeInfo = document.getElementById('stream-mode-info');
+    
+    if (toggleStreamModeBtn) {
+        toggleStreamModeBtn.addEventListener('click', () => {
+            if (streamMode === 'websocket') {
+                // Switch to direct mode
+                streamMode = 'direct';
+                toggleStreamModeBtn.textContent = 'Basculer en mode WebSocket';
+                streamModeInfo.textContent = 'Mode actuel: Direct';
+                
+                // Cancel WebSocket stream request
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({
+                        type: 'cancel_stream'
+                    }));
+                }
+                
+                // Start direct stream
+                directStreamInterval = setInterval(() => {
+                    const img = document.getElementById('camera-stream');
+                    if (img) {
+                        img.src = `/frame?ts=${new Date().getTime()}`;
+                    }
+                }, 100);
+                
+                // Update status
+                updateStreamStatus(true);
+            } else {
+                // Switch to WebSocket mode
+                streamMode = 'websocket';
+                toggleStreamModeBtn.textContent = 'Basculer en mode direct';
+                streamModeInfo.textContent = 'Mode actuel: WebSocket';
+                
+                // Stop direct stream
+                if (directStreamInterval) {
+                    clearInterval(directStreamInterval);
+                    directStreamInterval = null;
+                }
+                
+                // Request WebSocket stream
+                requestCameraStream();
+            }
+        });
+    }
+    
+    // Request camera stream from server (only in WebSocket mode)
     function requestCameraStream() {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            console.log('Requesting camera stream');
+        if (streamMode === 'websocket' && socket && socket.readyState === WebSocket.OPEN) {
+            console.log('Requesting camera stream via WebSocket');
             socket.send(JSON.stringify({
                 type: 'stream_request'
             }));
         }
     }
     
-    // Update camera frame with received data
+    // Update camera frame with received data (for WebSocket mode)
     function updateCameraFrame(base64Data) {
-        const img = document.getElementById('camera-stream');
-        if (img) {
-            img.src = `data:image/jpeg;base64,${base64Data}`;
+        if (streamMode === 'websocket') {
+            const img = document.getElementById('camera-stream');
+            if (img) {
+                img.src = `data:image/jpeg;base64,${base64Data}`;
+            }
         }
     }
     
@@ -563,6 +616,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (this.checked) {
             imageDetectionContainer.style.display = 'none';
             realtimeDetectionContainer.style.display = 'block';
+        }
+    });
+
+    // Clean up on page unload
+    window.addEventListener('beforeunload', () => {
+        if (directStreamInterval) {
+            clearInterval(directStreamInterval);
         }
     });
 });
