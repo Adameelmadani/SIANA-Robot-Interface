@@ -1,0 +1,15 @@
+
+{
+  "name": "esp32-cam-relay",
+  "version": "1.0.0",
+  "description": "ESP32-CAM stream relay server",
+  "main": "run-test.js",
+  "scripts": {
+    "test": "node run-test.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.13.0",
+    "canvas": "^2.11.2"
+  }
+}
