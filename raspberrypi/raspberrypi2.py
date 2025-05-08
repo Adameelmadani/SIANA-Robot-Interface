@@ -233,7 +233,7 @@ def on_message(ws, message):
         elif message_type == 'servo': # For arm servo control
             motor_id_val = data.get('motor_id')
             value_direction_str = data.get('value', '').lower() # "left" or "right"
-            is_active_servo = data.get('isActive', False)
+            is_active_servo = data.get('is_active', False)
 
             # Validate motor_id
             motor_id = -1 # Default to invalid
