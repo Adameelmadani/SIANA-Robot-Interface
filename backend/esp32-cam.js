@@ -1,7 +1,7 @@
-
 /**
  * ESP32-CAM stream handler module that connects to the ESP32-CAM's MJPEG stream,
  * captures frames, and makes them available to multiple clients.
+ * Based on the implementation from the test directory.
  */
 
 const http = require('http');
@@ -10,12 +10,12 @@ const path = require('path');
 const EventEmitter = require('events');
 
 class ESP32CamHandler extends EventEmitter {
-  constructor(options = {}) {
+  constructor() {
     super();
-    this.streamUrl = options.streamUrl || 'http://192.168.4.1/stream';
-    this.framesDir = options.framesDir || path.join(__dirname, 'frames');
-    this.maxFrames = options.maxFrames || 5;
-    this.frameDelay = options.frameDelay || 50;
+    // Configuration
+    this.streamUrl = 'http://192.168.4.1/stream';
+    this.framesDir = path.join(__dirname, 'frames');
+    this.maxFrames = 5;
     
     // State variables
     this.latestFrame = null;
@@ -23,11 +23,9 @@ class ESP32CamHandler extends EventEmitter {
     this.capturing = false;
     this.streamRequest = null;
     this.connected = false;
-    this.connectionAttempts = 0;
-    this.maxConnectionAttempts = options.maxConnectionAttempts || 20;
   }
 
-  // Initialize frames directory
+  // Create frames directory if it doesn't exist
   createFramesDirectory() {
     if (!fs.existsSync(this.framesDir)) {
       try {
@@ -81,127 +79,113 @@ class ESP32CamHandler extends EventEmitter {
     }
     
     this.capturing = true;
-    this.connectionAttempts = 0;
     console.log(`Starting ESP32-CAM frame capture from ${this.streamUrl}`);
-    this.connectToStream();
+    this.captureFrames();
   }
 
-  // Connect to the ESP32-CAM stream
-  connectToStream() {
-    if (!this.capturing) return;
-    
-    if (this.connectionAttempts >= this.maxConnectionAttempts) {
-      console.log('Maximum connection attempts reached. Stopping attempts.');
-      this.capturing = false;
-      return;
-    }
-    
-    this.connectionAttempts++;
-    
-    // Clear any existing request
-    if (this.streamRequest) {
-      this.streamRequest.abort();
-      this.streamRequest = null;
-    }
-    
-    console.log(`Connecting to ESP32-CAM stream (attempt ${this.connectionAttempts}): ${this.streamUrl}`);
-    
-    this.streamRequest = http.get(this.streamUrl, (res) => {
-      if (res.statusCode !== 200) {
-        console.error(`Failed to connect to stream: ${res.statusCode}`);
-        this.connected = false;
-        this.emit('disconnected');
-        setTimeout(() => this.connectToStream(), 5000); // Retry after 5 seconds
-        return;
-      }
-
-      console.log('Connected to ESP32-CAM stream');
-      this.connected = true;
-      this.connectionAttempts = 0;
-      this.emit('connected');
+  // Main function to capture frames (using the test approach)
+  captureFrames() {
+    const connect = () => {
+      if (!this.capturing) return;
       
-      // Get boundary from content type
-      const contentType = res.headers['content-type'];
-      const boundaryMatch = contentType && contentType.match(/boundary=([^;]+)/i);
-      if (!boundaryMatch) {
-        console.error('Could not find boundary in Content-Type header');
-        this.connected = false;
-        this.emit('disconnected');
-        setTimeout(() => this.connectToStream(), 5000);
-        return;
+      // Clear any existing request
+      if (this.streamRequest) {
+        this.streamRequest.abort();
+        this.streamRequest = null;
       }
       
-      // Process the stream
-      this.processStream(res);
-    });
-    
-    this.streamRequest.on('error', (err) => {
-      console.error(`Connection error: ${err}`);
-      this.connected = false;
-      this.emit('disconnected');
-      setTimeout(() => this.connectToStream(), 5000);
-    });
-  }
-
-  // Process the MJPEG stream data
-  processStream(res) {
-    let buffer = Buffer.alloc(0);
-    
-    res.on('data', (chunk) => {
-      buffer = Buffer.concat([buffer, chunk]);
-      
-      // Look for JPEG markers in the buffer
-      // JPEG files start with FF D8 and end with FF D9
-      let startIdx = buffer.indexOf(Buffer.from([0xFF, 0xD8]));
-      while (startIdx !== -1) {
-        let endIdx = buffer.indexOf(Buffer.from([0xFF, 0xD9]), startIdx);
-        
-        if (endIdx !== -1) {
-          // We have a complete JPEG
-          endIdx += 2; // Include the FF D9 marker
-          const frameBuffer = buffer.slice(startIdx, endIdx);
-          
-          // Save the frame
-          this.latestFrame = frameBuffer;
-          
-          // Emit frame event for WebSockets to use
-          this.emit('frame', frameBuffer);
-          
-          // Save frame to disk
-          const frameFilename = path.join(this.framesDir, `frame_${String(this.frameCount).padStart(5, '0')}.jpg`);
-          try {
-            fs.writeFileSync(frameFilename, frameBuffer);
-            this.frameCount++;
-            this.cleanupFrames();
-          } catch (err) {
-            console.error(`Error saving frame to ${frameFilename}: ${err}`);
-          }
-          
-          // Remove processed data from buffer
-          buffer = buffer.slice(endIdx);
-          
-          // Look for the next JPEG start
-          startIdx = buffer.indexOf(Buffer.from([0xFF, 0xD8]));
-        } else {
-          // Incomplete JPEG, wait for more data
-          break;
+      this.streamRequest = http.get(this.streamUrl, (res) => {
+        if (res.statusCode !== 200) {
+          console.error(`Failed to connect to stream: ${res.statusCode}`);
+          this.connected = false;
+          this.emit('disconnected');
+          setTimeout(connect, 5000); // Retry after 5 seconds
+          return;
         }
-      }
-    });
+
+        console.log('Connected to ESP32-CAM stream');
+        this.connected = true;
+        this.emit('connected');
+        
+        // Get boundary from content type
+        const contentType = res.headers['content-type'];
+        const boundaryMatch = contentType && contentType.match(/boundary=([^;]+)/i);
+        if (!boundaryMatch) {
+          console.error('Could not find boundary in Content-Type header');
+          this.connected = false;
+          this.emit('disconnected');
+          setTimeout(connect, 5000);
+          return;
+        }
+        
+        let buffer = Buffer.alloc(0);
+        
+        res.on('data', (chunk) => {
+          buffer = Buffer.concat([buffer, chunk]);
+          
+          // Look for JPEG markers in the buffer
+          // JPEG files start with FF D8 and end with FF D9
+          let startIdx = buffer.indexOf(Buffer.from([0xFF, 0xD8]));
+          while (startIdx !== -1) {
+            let endIdx = buffer.indexOf(Buffer.from([0xFF, 0xD9]), startIdx);
+            
+            if (endIdx !== -1) {
+              // We have a complete JPEG
+              endIdx += 2; // Include the FF D9 marker
+              const frameBuffer = buffer.slice(startIdx, endIdx);
+              
+              // Save the frame
+              this.latestFrame = frameBuffer;
+              
+              // Emit frame event for WebSockets to use
+              this.emit('frame', frameBuffer);
+              
+              // Save frame to disk
+              const frameFilename = path.join(this.framesDir, `frame_${String(this.frameCount).padStart(5, '0')}.jpg`);
+              try {
+                fs.writeFileSync(frameFilename, frameBuffer);
+                this.frameCount++;
+                this.cleanupFrames();
+              } catch (err) {
+                console.error(`Error saving frame to ${frameFilename}: ${err}`);
+              }
+              
+              // Remove processed data from buffer
+              buffer = buffer.slice(endIdx);
+              
+              // Look for the next JPEG start
+              startIdx = buffer.indexOf(Buffer.from([0xFF, 0xD8]));
+            } else {
+              // Incomplete JPEG, wait for more data
+              break;
+            }
+          }
+        });
+        
+        res.on('error', (err) => {
+          console.error(`Stream error: ${err}`);
+          this.connected = false;
+          this.emit('disconnected');
+          setTimeout(connect, 5000);
+        });
+        
+        res.on('end', () => {
+          console.log('Stream ended');
+          this.connected = false;
+          this.emit('disconnected');
+          setTimeout(connect, 5000);
+        });
+      });
+      
+      this.streamRequest.on('error', (err) => {
+        console.error(`Connection error: ${err}`);
+        this.connected = false;
+        this.emit('disconnected');
+        setTimeout(connect, 5000);
+      });
+    };
     
-    res.on('error', (err) => {
-      console.error(`Stream error: ${err}`);
-      this.connected = false;
-      this.emit('disconnected');
-      setTimeout(() => this.connectToStream(), 5000);
-    });
-    
-    res.on('end', () => {
-      console.log('Stream ended');
-      this.connected = false;
-      this.emit('disconnected');
-      setTimeout(() => this.connectToStream(), 5000);
-    });
+    connect();
   }
 
   // Stop capturing frames
