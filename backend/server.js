@@ -75,7 +75,7 @@ wss.on('connection', (ws, req) => {
             if (!isRaspberryPi && data.type === 'servo') {
                 if (piConnection && piConnection.readyState === WebSocket.OPEN) {
                     piConnection.send(JSON.stringify(data));
-                    console.log(`Command move servo to Pi: ${data.motor_id} ${data.value} - ${data.isActive}`);
+                    console.log(`Command move servo to Pi: ${data.motor_id} ${data.value} - ${data.is_active}`);
                 } else {
                     console.log('Cannot move servo: Pi not connected');
                     // Inform the client that Pi isn't connected

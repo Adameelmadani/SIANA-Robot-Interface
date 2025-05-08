@@ -155,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 type: "servo",
                 motor_id: 0,
                 value: "right",
-                is_active: true
+                is_active: isActive
             };
             
             socket.send(JSON.stringify(message));
