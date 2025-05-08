@@ -321,7 +321,7 @@ esp32Cam.on('frame', (frameBuffer) => {
     
     // If we have clients with real-time detection enabled and 
     // the queue is not too large, add the frame to the processing queue
-    if (detectionClients.length > 0 && processingQueue.length < 2) {
+    if (detectionClients.length > 0 && processingQueue.length < 3) { // Increased from 2 to 3
         processingQueue.push({
             frameBuffer,
             clients: detectionClients

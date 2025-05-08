@@ -21,7 +21,7 @@
 #define HREF_GPIO_NUM     23
 #define PCLK_GPIO_NUM     22
 
-#define AP_SSID "Hotspot"
+#define AP_SSID "ESP32-CAM"
 #define AP_PASS "12345678"
 
 // Function to initialize the camera
@@ -50,11 +50,11 @@ bool initCamera() {
 
   // Set frame size and quality
   if (psramFound()) {
-    config.frame_size = FRAMESIZE_UXGA; // 1600x1200
+    config.frame_size = FRAMESIZE_VGA; // 640x480 (medium resolution)
     config.jpeg_quality = 10;
     config.fb_count = 2;
   } else {
-    config.frame_size = FRAMESIZE_SVGA; // 800x600
+    config.frame_size = FRAMESIZE_VGA; // 640x480 (medium resolution)
     config.jpeg_quality = 12;
     config.fb_count = 1;
   }
@@ -97,6 +97,9 @@ esp_err_t streamHandler(httpd_req_t *req) {
 
     // Release the frame buffer
     esp_camera_fb_return(fb);
+    
+    // Add delay to limit to ~5fps (1000ms/5 = 200ms)
+    delay(200);
   }
 
   return ESP_OK;
