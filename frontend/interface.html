@@ -49,12 +49,22 @@
                         
                         <div id="realtime-detection-container" class="detection-container" style="display: none;">
                             <div class="stream-container">
-                                <img id="camera-stream" src="http://localhost:5000/video_feed" alt="Camera Stream">
+                                <img id="camera-stream" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="Camera Stream">
                                 <div id="stream-status" class="stream-status disconnected">Flux vidéo déconnecté</div>
+                                <div id="detection-status" class="detection-status inactive">Détection d'objets inactive</div>
                             </div>
                             
                             <div class="detection-controls">
                                 <button id="toggle-detection-btn" class="action-btn">Activer la détection</button>
+                            </div>
+                            
+                            <div id="detection-result-container" class="result-container" style="display: none;">
+                                <img id="detection-result" src="" alt="Résultat de la détection">
+                            </div>
+                            
+                            <div id="detection-loading-container" class="loading-container">
+                                <div class="loading-spinner"></div>
+                                <p>Initialisation de la détection en temps réel...</p>
                             </div>
                         </div>
                         

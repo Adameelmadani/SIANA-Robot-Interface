@@ -1,578 +1,653 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // WebSocket connection
-    let socket = null;
-    
-    // Connect to server
-    function connectWebSocket() {
-        // Use the location of the current page to determine WebSocket URL
-        const wsUrl = `ws://192.168.12.1:3000/robot`;
-        console.log(`Connecting to WebSocket at ${wsUrl}`);
-        socket = new WebSocket(wsUrl);
-        
-        socket.onopen = () => {
-            console.log('WebSocket connection established');
-            document.getElementById('wifi-status').className = 'connected';
-            document.getElementById('wifi-status').innerHTML = '<i class="fa-solid fa-wifi"></i> Connecté';
-        };
-        
-        socket.onclose = () => {
-            console.log('WebSocket connection closed');
-            document.getElementById('wifi-status').className = 'disconnected';
-            document.getElementById('wifi-status').innerHTML = '<i class="fa-solid fa-wifi"></i> Déconnecté';
-            
-            // Try to reconnect after a delay
-            setTimeout(connectWebSocket, 5000);
-        };
-        
-        socket.onerror = (error) => {
-            console.error('WebSocket error:', error);
-            addDefect('Erreur de connexion WebSocket', 'critical');
-        };
-        
-        socket.onmessage = (event) => {
-            try {
-                const message = JSON.parse(event.data);
-                
-                // We'll only handle the general messages - stream handling is now managed by Flask
-                console.log('Message from server:', message);
-                
-            } catch (e) {
-                console.error('Error parsing message from server:', e);
-            }
-        };
-    }
-    
-    // Update stream status in UI
-    function updateStreamStatus(connected) {
-        const streamStatus = document.getElementById('stream-status');
-        
-        if (streamStatus) {
-            if (connected) {
-                streamStatus.textContent = 'Flux vidéo actif';
-                streamStatus.className = 'stream-status connected';
-            } else {
-                streamStatus.textContent = 'Flux vidéo déconnecté';
-                streamStatus.className = 'stream-status disconnected';
-            }
-        }
-    }
-    
-    // Connect on page load
-    connectWebSocket();
+  // WebSocket connection
+  let socket = null;
+  
+  // Connect to server
+  function connectWebSocket() {
+      // Use the location of the current page to determine WebSocket URL
+      const wsUrl = `ws://192.168.12.1:3000/robot`;
 
-    // Speed control
-    const speedSlider = document.getElementById('speed-slider');
-    const speedValue = document.getElementById('speed-value');
-    const increaseBtn = document.getElementById('increase-speed');
-    const decreaseBtn = document.getElementById('decrease-speed');
+      console.log(`Connecting to WebSocket at ${wsUrl}`);
+      socket = new WebSocket(wsUrl);
+      
+      socket.onopen = () => {
+          console.log('WebSocket connection established');
+          document.getElementById('wifi-status').className = 'connected';
+          document.getElementById('wifi-status').innerHTML = '<i class="fa-solid fa-wifi"></i> Connecté';
+          
+          // Request camera stream
+          requestCameraStream();
+      };
+      
+      socket.onclose = () => {
+          console.log('WebSocket connection closed');
+          document.getElementById('wifi-status').className = 'disconnected';
+          document.getElementById('wifi-status').innerHTML = '<i class="fa-solid fa-wifi"></i> Déconnecté';
+          
+          // Try to reconnect after a delay
+          setTimeout(connectWebSocket, 5000);
+      };
+      
+      socket.onerror = (error) => {
+          console.error('WebSocket error:', error);
+          addDefect('Erreur de connexion WebSocket', 'critical');
+      };
+      
+      socket.onmessage = (event) => {
+          try {
+              const message = JSON.parse(event.data);
+              
+              // Handle camera frame data
+              if (message.type === 'camera_frame') {
+                  updateCameraFrame(message.data);
+              }
+              
+              // Handle stream status updates
+              if (message.type === 'stream_status') {
+                  updateStreamStatus(message.connected);
+              }
+              
+              // Handle detection frame updates
+              if (message.type === 'detection_frame') {
+                  updateDetectionFrame(message.data);
+              }
+              
+              // Handle detection status
+              if (message.type === 'detection_status') {
+                  updateDetectionStatus(message.enabled);
+              }
+              
+              // Handle other messages as before
+              console.log('Message from server:', message);
+          } catch (e) {
+              console.error('Error parsing message from server:', e);
+          }
+      };
+  }
+  
+  // Request camera stream from server
+  function requestCameraStream() {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+          console.log('Requesting camera stream via WebSocket');
+          socket.send(JSON.stringify({
+              type: 'stream_request'
+          }));
+      }
+  }
+  
+  // Update camera frame with received data
+  function updateCameraFrame(base64Data) {
+      const img = document.getElementById('camera-stream');
+      if (img) {
+          img.src = `data:image/jpeg;base64,${base64Data}`;
+      }
+  }
+  
+  // Update detection frame with received data
+  function updateDetectionFrame(base64Data) {
+      const img = document.getElementById('detection-result');
+      if (img) {
+          img.src = `data:image/jpeg;base64,${base64Data}`;
+          // Show the detection result container
+          document.getElementById('detection-result-container').style.display = 'block';
+          // Hide the loading message
+          document.getElementById('detection-loading-container').style.display = 'none';
+      }
+  }
+  
+  // Update stream status in UI
+  function updateStreamStatus(connected) {
+      const cameraStream = document.getElementById('camera-stream');
+      const streamStatus = document.getElementById('stream-status');
+      
+      if (streamStatus) {
+          if (connected) {
+              streamStatus.textContent = 'Flux vidéo actif';
+              streamStatus.className = 'stream-status connected';
+              cameraStream.style.opacity = '1';
+          } else {
+              streamStatus.textContent = 'Flux vidéo déconnecté';
+              streamStatus.className = 'stream-status disconnected';
+              cameraStream.style.opacity = '0.5';
+          }
+      }
+  }
+  
+  // Update detection status in UI
+  function updateDetectionStatus(enabled) {
+      const status = document.getElementById('detection-status');
+      if (status) {
+          status.textContent = enabled ? 'Détection d\'objets active' : 'Détection d\'objets inactive';
+          status.className = enabled ? 'detection-status active' : 'detection-status inactive';
+      }
+  }
+  
+  // Connect on page load
+  connectWebSocket();
 
-    // Update speed value
-    function updateSpeedValue() {
-        speedValue.textContent = speedSlider.value;
-    }
+  // Speed control
+  const speedSlider = document.getElementById('speed-slider');
+  const speedValue = document.getElementById('speed-value');
+  const increaseBtn = document.getElementById('increase-speed');
+  const decreaseBtn = document.getElementById('decrease-speed');
 
-    speedSlider.addEventListener('input', updateSpeedValue);
+  // Update speed value
+  function updateSpeedValue() {
+      speedValue.textContent = speedSlider.value;
+  }
 
-    increaseBtn.addEventListener('click', () => {
-        const currentValue = parseInt(speedSlider.value);
-        if (currentValue < 20) {
-            speedSlider.value = currentValue + 1;
-            updateSpeedValue();
-            logOperation(`Changement vitesse`, `Vitesse augmentée à ${speedSlider.value}`);
-        }
-    });
+  speedSlider.addEventListener('input', updateSpeedValue);
 
-    decreaseBtn.addEventListener('click', () => {
-        const currentValue = parseInt(speedSlider.value);
-        if (currentValue > 0) {
-            speedSlider.value = currentValue - 1;
-            updateSpeedValue();
-            logOperation(`Changement vitesse`, `Vitesse réduite à ${speedSlider.value}`);
-        }
-    });
+  increaseBtn.addEventListener('click', () => {
+      const currentValue = parseInt(speedSlider.value);
+      if (currentValue < 20) {
+          speedSlider.value = currentValue + 1;
+          updateSpeedValue();
+          logOperation(`Changement vitesse`, `Vitesse augmentée à ${speedSlider.value}`);
+      }
+  });
 
-    // Robot control buttons
-    const directionButtons = document.querySelectorAll('.direction-btn');
-    
-    directionButtons.forEach(button => {
-        button.addEventListener('mousedown', () => {
-            const direction = button.id;
-            controlRobot(direction, true);
-        });
-        
-        button.addEventListener('mouseup', () => {
-            const direction = button.id;
-            controlRobot(direction, false);
-        });
-        
-        button.addEventListener('mouseleave', () => {
-            const direction = button.id;
-            controlRobot(direction, false);
-        });
-    });
+  decreaseBtn.addEventListener('click', () => {
+      const currentValue = parseInt(speedSlider.value);
+      if (currentValue > 0) {
+          speedSlider.value = currentValue - 1;
+          updateSpeedValue();
+          logOperation(`Changement vitesse`, `Vitesse réduite à ${speedSlider.value}`);
+      }
+  });
 
-    // Servo motor control buttons
-    const servoButtons = document.querySelectorAll('.servo-btn');
-    
-    servoButtons.forEach(button => {
-        button.addEventListener('mousedown', () => {
-            const [servoPrefix, direction] = button.id.split('-');
-            const motorId = parseInt(servoPrefix.replace('servo', ''));
-            controlServo(motorId, direction, true);
-        });
-        
-        button.addEventListener('mouseup', () => {
-            const [servoPrefix, direction] = button.id.split('-');
-            const motorId = parseInt(servoPrefix.replace('servo', ''));
-            controlServo(motorId, direction, false);
-        });
-        
-        button.addEventListener('mouseleave', () => {
-            const [servoPrefix, direction] = button.id.split('-');
-            const motorId = parseInt(servoPrefix.replace('servo', ''));
-            controlServo(motorId, direction, false);
-        });
-    });
+  // Robot control buttons
+  const directionButtons = document.querySelectorAll('.direction-btn');
+  
+  directionButtons.forEach(button => {
+      button.addEventListener('mousedown', () => {
+          const direction = button.id;
+          controlRobot(direction, true);
+      });
+      
+      button.addEventListener('mouseup', () => {
+          const direction = button.id;
+          controlRobot(direction, false);
+      });
+      
+      button.addEventListener('mouseleave', () => {
+          const direction = button.id;
+          controlRobot(direction, false);
+      });
+  });
 
-    // Updated controlRobot function to use WebSockets
-    function controlRobot(direction, isActive) {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            console.log(`Sending robot command: ${direction} - ${isActive}`);
-            
-            const message = {
-                type: 'control',
-                direction: direction,
-                isActive: isActive
-            };
-            
-            socket.send(JSON.stringify(message));
-            logOperation(`Mouvement`, `Direction: ${direction}`);
-        } else {
-            console.error('WebSocket is not connected');
-            addDefect('Commande non envoyée: WebSocket déconnecté', 'critical');
-        }
-    }
-    
-    // Function to control servo motors
-    function controlServo(motorId, value, isActive) {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            console.log(`Sending servo command: Motor ${motorId}, Direction: ${value}, Active: ${isActive}`);
-            
-            const message = {
-                type: 'servo',
-                motor_id: motorId,
-                value: value,
-                is_active: isActive
-            };
-            
-            socket.send(JSON.stringify(message));
-            logOperation(`Servo ${motorId}`, `Direction: ${value}`);
-        } else {
-            console.error('WebSocket is not connected');
-            addDefect('Commande servo non envoyée: WebSocket déconnecté', 'critical');
-        }
-    }
+  // Servo motor control buttons
+  const servoButtons = document.querySelectorAll('.servo-btn');
+  
+  servoButtons.forEach(button => {
+      button.addEventListener('mousedown', () => {
+          const [servoPrefix, direction] = button.id.split('-');
+          const motorId = parseInt(servoPrefix.replace('servo', ''));
+          controlServo(motorId, direction, true);
+      });
+      
+      button.addEventListener('mouseup', () => {
+          const [servoPrefix, direction] = button.id.split('-');
+          const motorId = parseInt(servoPrefix.replace('servo', ''));
+          controlServo(motorId, direction, false);
+      });
+      
+      button.addEventListener('mouseleave', () => {
+          const [servoPrefix, direction] = button.id.split('-');
+          const motorId = parseInt(servoPrefix.replace('servo', ''));
+          controlServo(motorId, direction, false);
+      });
+  });
 
-    // Robot start/stop
-    const startBtn = document.getElementById('start-btn');
-    const stopBtn = document.getElementById('stop-btn');
-    
-    startBtn.addEventListener('click', () => {
-        console.log('Robot started');
-        logOperation('Démarrage', 'Robot initialisé');
-        
-        // Ensure WebSocket is connected
-        if (!socket || socket.readyState !== WebSocket.OPEN) {
-            connectWebSocket();
-        }
-        
-        // Send start command via WebSocket
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            const message = {
-                type: 'command',
-                action: 'start'
-            };
-            socket.send(JSON.stringify(message));
-        }
-    });
-    
-    stopBtn.addEventListener('click', () => {
-        console.log('Robot stopped');
-        logOperation('Arrêt', 'Robot arrêté');
-        
-        // Send stop command via WebSocket
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            const message = {
-                type: 'command',
-                action: 'stop'
-            };
-            socket.send(JSON.stringify(message));
-        }
-        
-        // Disconnect WebSocket
-        if (socket) {
-            socket.close();
-        }
-    });
+  // Updated controlRobot function to use WebSockets
+  function controlRobot(direction, isActive) {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+          console.log(`Sending robot command: ${direction} - ${isActive}`);
+          
+          const message = {
+              type: 'control',
+              direction: direction,
+              isActive: isActive
+          };
+          
+          socket.send(JSON.stringify(message));
+          logOperation(`Mouvement`, `Direction: ${direction}`);
+      } else {
+          console.error('WebSocket is not connected');
+          addDefect('Commande non envoyée: WebSocket déconnecté', 'critical');
+      }
+  }
+  
+  // Function to control servo motors
+  function controlServo(motorId, value, isActive) {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+          console.log(`Sending servo command: Motor ${motorId}, Direction: ${value}, Active: ${isActive}`);
+          
+          const message = {
+              type: 'servo',
+              motor_id: motorId,
+              value: value,
+              is_active: isActive
+          };
+          
+          socket.send(JSON.stringify(message));
+          logOperation(`Servo ${motorId}`, `Direction: ${value}`);
+      } else {
+          console.error('WebSocket is not connected');
+          addDefect('Commande servo non envoyée: WebSocket déconnecté', 'critical');
+      }
+  }
 
-    // Log operations to the history table
-    function logOperation(event, details) {
-        const now = new Date();
-        const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-        
-        const historyTable = document.getElementById('operations-history').getElementsByTagName('tbody')[0];
-        const newRow = historyTable.insertRow(0);
-        
-        const cell1 = newRow.insertCell(0);
-        const cell2 = newRow.insertCell(1);
-        const cell3 = newRow.insertCell(2);
-        
-        cell1.textContent = time;
-        cell2.textContent = event;
-        cell3.textContent = details;
-    }
+  // Robot start/stop
+  const startBtn = document.getElementById('start-btn');
+  const stopBtn = document.getElementById('stop-btn');
+  
+  startBtn.addEventListener('click', () => {
+      console.log('Robot started');
+      logOperation('Démarrage', 'Robot initialisé');
+      
+      // Ensure WebSocket is connected
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+          connectWebSocket();
+      }
+      
+      // Send start command via WebSocket
+      if (socket && socket.readyState === WebSocket.OPEN) {
+          const message = {
+              type: 'command',
+              action: 'start'
+          };
+          socket.send(JSON.stringify(message));
+      }
+  });
+  
+  stopBtn.addEventListener('click', () => {
+      console.log('Robot stopped');
+      logOperation('Arrêt', 'Robot arrêté');
+      
+      // Send stop command via WebSocket
+      if (socket && socket.readyState === WebSocket.OPEN) {
+          const message = {
+              type: 'command',
+              action: 'stop'
+          };
+          socket.send(JSON.stringify(message));
+      }
+      
+      // Disconnect WebSocket
+      if (socket) {
+          socket.close();
+      }
+  });
 
-    // Simulated monitoring functions
-    function monitorBattery() {
-        let batteryLevel = 75; // Starting level in percent
-        
-        setInterval(() => {
-            batteryLevel -= Math.random() * 0.5;
-            
-            if (batteryLevel < 0) batteryLevel = 0;
-            
-            document.getElementById('battery-percentage').textContent = `${Math.round(batteryLevel)}%`;
-            document.querySelector('.battery-level').style.width = `${batteryLevel}%`;
-            
-            // Change color based on level
-            if (batteryLevel < 20) {
-                document.querySelector('.battery-level').style.backgroundColor = 'var(--danger-color)';
-                
-                // Fix: :contains is jQuery selector, not native JavaScript
-                // Check if we already have a battery-related defect
-                const batteryDefects = Array.from(document.querySelectorAll('.defect')).some(
-                    el => el.textContent.includes('Batterie')
-                );
-                
-                if (batteryLevel < 15 && !batteryDefects) {
-                    addDefect('Batterie critique', 'critical');
-                }
-            } else if (batteryLevel < 40) {
-                document.querySelector('.battery-level').style.backgroundColor = 'var(--warning-color)';
-            }
-        }, 10000); // Update every 10 seconds
-    }
+  // Log operations to the history table
+  function logOperation(event, details) {
+      const now = new Date();
+      const time = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+      
+      const historyTable = document.getElementById('operations-history').getElementsByTagName('tbody')[0];
+      const newRow = historyTable.insertRow(0);
+      
+      const cell1 = newRow.insertCell(0);
+      const cell2 = newRow.insertCell(1);
+      const cell3 = newRow.insertCell(2);
+      
+      cell1.textContent = time;
+      cell2.textContent = event;
+      cell3.textContent = details;
+  }
 
-    function monitorDistance() {
-        let distance = 142; // Starting distance in meters
-        
-        setInterval(() => {
-            if (document.getElementById('wifi-status').className === 'connected') {
-                distance += Math.random() * 0.2;
-                document.getElementById('distance-value').textContent = `${Math.round(distance * 10) / 10} m`;
-            }
-        }, 1000); // Update every second
-    }
+  // Simulated monitoring functions
+  function monitorBattery() {
+      let batteryLevel = 75; // Starting level in percent
+      
+      setInterval(() => {
+          batteryLevel -= Math.random() * 0.5;
+          
+          if (batteryLevel < 0) batteryLevel = 0;
+          
+          document.getElementById('battery-percentage').textContent = `${Math.round(batteryLevel)}%`;
+          document.querySelector('.battery-level').style.width = `${batteryLevel}%`;
+          
+          // Change color based on level
+          if (batteryLevel < 20) {
+              document.querySelector('.battery-level').style.backgroundColor = 'var(--danger-color)';
+              
+              // Fix: :contains is jQuery selector, not native JavaScript
+              // Check if we already have a battery-related defect
+              const batteryDefects = Array.from(document.querySelectorAll('.defect')).some(
+                  el => el.textContent.includes('Batterie')
+              );
+              
+              if (batteryLevel < 15 && !batteryDefects) {
+                  addDefect('Batterie critique', 'critical');
+              }
+          } else if (batteryLevel < 40) {
+              document.querySelector('.battery-level').style.backgroundColor = 'var(--warning-color)';
+          }
+      }, 10000); // Update every 10 seconds
+  }
 
-    // Add a defect to the list
-    function addDefect(message, level) {
-        const defectsList = document.getElementById('defects-list');
-        const defect = document.createElement('li');
-        defect.className = `defect ${level}`;
-        
-        const icon = level === 'warning' ? 'fa-exclamation-triangle' : 'fa-times-circle';
-        defect.innerHTML = `<i class="fa-solid ${icon}"></i> ${message}`;
-        
-        defectsList.prepend(defect);
-        
-        // Also log to operation history
-        logOperation('Défaut', message);
-    }
+  function monitorDistance() {
+      let distance = 142; // Starting distance in meters
+      
+      setInterval(() => {
+          if (document.getElementById('wifi-status').className === 'connected') {
+              distance += Math.random() * 0.2;
+              document.getElementById('distance-value').textContent = `${Math.round(distance * 10) / 10} m`;
+          }
+      }, 1000); // Update every second
+  }
 
-    // Instead of simulating ping, use real WebSocket connection status
-    function monitorWebSocketConnection() {
-        setInterval(() => {
-            if (!socket || socket.readyState !== WebSocket.OPEN) {
-                // WebSocket is not connected, try to reconnect
-                if (!socket || socket.readyState === WebSocket.CLOSED) {
-                    connectWebSocket();
-                }
-            }
-        }, 10000); // Check every 10 seconds
-    }
+  // Add a defect to the list
+  function addDefect(message, level) {
+      const defectsList = document.getElementById('defects-list');
+      const defect = document.createElement('li');
+      defect.className = `defect ${level}`;
+      
+      const icon = level === 'warning' ? 'fa-exclamation-triangle' : 'fa-times-circle';
+      defect.innerHTML = `<i class="fa-solid ${icon}"></i> ${message}`;
+      
+      defectsList.prepend(defect);
+      
+      // Also log to operation history
+      logOperation('Défaut', message);
+  }
 
-    // Random simulation of sensor values
-    function simulateSensors() {
-        // Luminosity simulation
-        setInterval(() => {
-            const luminosity = Math.floor(70 + Math.random() * 30);
-            document.getElementById('luminosity-value').textContent = `${luminosity}%`;
-            
-            if (luminosity < 75) {
-                addDefect('Luminosité faible', 'warning');
-            }
-        }, 15000); // Update every 15 seconds
-    }
+  // Instead of simulating ping, use real WebSocket connection status
+  function monitorWebSocketConnection() {
+      setInterval(() => {
+          if (!socket || socket.readyState !== WebSocket.OPEN) {
+              // WebSocket is not connected, try to reconnect
+              if (!socket || socket.readyState === WebSocket.CLOSED) {
+                  connectWebSocket();
+              }
+          }
+      }, 10000); // Check every 10 seconds
+  }
 
-    // Start simulations
-    monitorBattery();
-    monitorDistance();
-    simulateSensors();
-    monitorWebSocketConnection();
+  // Random simulation of sensor values
+  function simulateSensors() {
+      // Luminosity simulation
+      setInterval(() => {
+          const luminosity = Math.floor(70 + Math.random() * 30);
+          document.getElementById('luminosity-value').textContent = `${luminosity}%`;
+          
+          if (luminosity < 75) {
+              addDefect('Luminosité faible', 'warning');
+          }
+      }, 15000); // Update every 15 seconds
+  }
 
-    // For demonstration purposes, let's add some random defects occasionally
-    setInterval(() => {
-        if (Math.random() > 0.7) {
-            const defects = [
-                {message: 'Moteur gauche bloqué', level: 'critical'},
-                {message: 'Capteur de proximité défaillant', level: 'warning'},
-                {message: 'Distance limite dépassée', level: 'warning'},
-                {message: 'Surchauffe détectée', level: 'critical'}
-            ];
-            
-            const randomDefect = defects[Math.floor(Math.random() * defects.length)];
-            addDefect(randomDefect.message, randomDefect.level);
-        }
-    }, 60000); // Check every minute
+  // Start simulations
+  monitorBattery();
+  monitorDistance();
+  simulateSensors();
+  monitorWebSocketConnection();
 
-    // Image upload handling
-    const uploadArea = document.getElementById('upload-area');
-    const imageInput = document.getElementById('image-input');
-    const processImageBtn = document.getElementById('process-image-btn');
-    const imageUploadForm = document.getElementById('image-upload-form');
-    const resultContainer = document.getElementById('result-container');
-    const resultImage = document.getElementById('result-image');
-    const newImageBtn = document.getElementById('new-image-btn');
+  // For demonstration purposes, let's add some random defects occasionally
+  setInterval(() => {
+      if (Math.random() > 0.7) {
+          const defects = [
+              {message: 'Moteur gauche bloqué', level: 'critical'},
+              {message: 'Capteur de proximité défaillant', level: 'warning'},
+              {message: 'Distance limite dépassée', level: 'warning'},
+              {message: 'Surchauffe détectée', level: 'critical'}
+          ];
+          
+          const randomDefect = defects[Math.floor(Math.random() * defects.length)];
+          addDefect(randomDefect.message, randomDefect.level);
+      }
+  }, 60000); // Check every minute
 
-    // Click on upload area to trigger file input
-    uploadArea.addEventListener('click', () => {
-        imageInput.click();
-    });
+  // Image upload handling
+  const uploadArea = document.getElementById('upload-area');
+  const imageInput = document.getElementById('image-input');
+  const processImageBtn = document.getElementById('process-image-btn');
+  const imageUploadForm = document.getElementById('image-upload-form');
+  const resultContainer = document.getElementById('result-container');
+  const resultImage = document.getElementById('result-image');
+  const newImageBtn = document.getElementById('new-image-btn');
 
-    // Drag and drop functionality
-    uploadArea.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        // Fix: var() is a CSS function, not JavaScript
-        uploadArea.style.borderColor = 'var(--primary-color)';
-        uploadArea.style.backgroundColor = 'rgba(52, 152, 219, 0.3)';
-    });
+  // Click on upload area to trigger file input
+  uploadArea.addEventListener('click', () => {
+      imageInput.click();
+  });
 
-    uploadArea.addEventListener('dragleave', () => {
-        // Fix: var() is a CSS function, not JavaScript
-        uploadArea.style.borderColor = 'var(--secondary-color)';
-        uploadArea.style.backgroundColor = 'rgba(52, 152, 219, 0.1)';
-    });
+  // Drag and drop functionality
+  uploadArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      // Fix: var() is a CSS function, not JavaScript
+      uploadArea.style.borderColor = 'var(--primary-color)';
+      uploadArea.style.backgroundColor = 'rgba(52, 152, 219, 0.3)';
+  });
 
-    uploadArea.addEventListener('drop', (e) => {
-        e.preventDefault();
-        uploadArea.style.borderColor = 'var(--secondary-color)';
-        uploadArea.style.backgroundColor = 'rgba(52, 152, 219, 0.1)';
-        
-        if (e.dataTransfer.files.length) {
-            imageInput.files = e.dataTransfer.files;
-            handleFileSelect();
-        }
-    });
+  uploadArea.addEventListener('dragleave', () => {
+      // Fix: var() is a CSS function, not JavaScript
+      uploadArea.style.borderColor = 'var(--secondary-color)';
+      uploadArea.style.backgroundColor = 'rgba(52, 152, 219, 0.1)';
+  });
 
-    // File selection handler
-    imageInput.addEventListener('change', handleFileSelect);
+  uploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadArea.style.borderColor = 'var(--secondary-color)';
+      uploadArea.style.backgroundColor = 'rgba(52, 152, 219, 0.1)';
+      
+      if (e.dataTransfer.files.length) {
+          imageInput.files = e.dataTransfer.files;
+          handleFileSelect();
+      }
+  });
 
-    function handleFileSelect() {
-        if (imageInput.files.length > 0) {
-            const file = imageInput.files[0];
-            
-            // Check if the file is an image
-            if (!file.type.match('image.*')) {
-                alert('Veuillez sélectionner une image valide.');
-                return;
-            }
-            
-            // Preview the image in the upload area
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                uploadArea.innerHTML = `
-                    <img src="${e.target.result}" style="max-width: 100%; max-height: 280px; object-fit: contain;">
-                `;
-            };
-            reader.readAsDataURL(file);
-            
-            // Enable the process button
-            processImageBtn.disabled = false;
-        }
-    }
+  // File selection handler
+  imageInput.addEventListener('change', handleFileSelect);
 
-    // Form submission handler
-    imageUploadForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        
-        if (!imageInput.files.length) return;
-        
-        const formData = new FormData();
-        formData.append('image', imageInput.files[0]);
-        
-        // Show loading state
-        processImageBtn.disabled = true;
-        processImageBtn.textContent = 'Analyse en cours...';
-        
-        try {
-            // Use the correct backend URL - modify this to match your Node.js backend location
-            const backendUrl = 'http://192.168.12.1:3000';
-            console.log('Sending request to:', `${backendUrl}/api/process-image`);
-            
-            // Create an AbortController for timeout functionality
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
-            
-            // Add progress indicator
-            let dots = '';
-            let progressInterval = setInterval(() => {
-                dots = dots.length < 3 ? dots + '.' : '';
-                processImageBtn.textContent = `Analyse en cours${dots}`;
-            }, 500);
-            
-            try {
-                const response = await fetch(`${backendUrl}/api/process-image`, {
-                    method: 'POST',
-                    body: formData,
-                    signal: controller.signal
-                });
-                
-                // Clear the timeout since the request completed
-                clearTimeout(timeoutId);
-                clearInterval(progressInterval);
-                
-                console.log('Response status:', response.status);
-                
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('Server response:', errorText);
-                    throw new Error(`HTTP error! Status: ${response.status}`);
-                }
-                
-                // Safely parse JSON response
-                let data;
-                try {
-                    data = await response.json();
-                    console.log('Data received successfully');
-                } catch (jsonError) {
-                    console.error('JSON parsing error:', jsonError);
-                    throw new Error('Failed to parse server response');
-                }
-                
-                if (!data || !data.processedImage) {
-                    console.error('Invalid data received:', data);
-                    throw new Error('Invalid data received from server');
-                }
-                
-                console.log('Displaying processed image');
-                // Show the result
-                resultImage.src = `data:image/jpeg;base64,${data.processedImage}`;
-                imageUploadForm.style.display = 'none';
-                resultContainer.style.display = 'block';
-                
-                // Log the operation
-                logOperation('Analyse d\'image', 'Image traitée avec succès');
-                
-            } catch (fetchError) {
-                clearInterval(progressInterval);
-                if (fetchError.name === 'AbortError') {
-                    console.error('Request timed out after 30 seconds');
-                    throw new Error('Le traitement de l\'image a pris trop de temps (30 secondes). Veuillez réessayer.');
-                }
-                throw fetchError;
-            }
-            
-        } catch (error) {
-            console.error('Error processing image:', error);
-            alert(`Erreur lors du traitement de l'image: ${error.message}`);
-            
-            // Log the error
-            addDefect('Échec du traitement d\'image', 'critical');
-        } finally {
-            // Reset button state
-            processImageBtn.disabled = false;
-            processImageBtn.textContent = 'Analyser l\'image';
-        }
-    });
+  function handleFileSelect() {
+      if (imageInput.files.length > 0) {
+          const file = imageInput.files[0];
+          
+          // Check if the file is an image
+          if (!file.type.match('image.*')) {
+              alert('Veuillez sélectionner une image valide.');
+              return;
+          }
+          
+          // Preview the image in the upload area
+          const reader = new FileReader();
+          reader.onload = (e) => {
+              uploadArea.innerHTML = `
+                  <img src="${e.target.result}" style="max-width: 100%; max-height: 280px; object-fit: contain;">
+              `;
+          };
+          reader.readAsDataURL(file);
+          
+          // Enable the process button
+          processImageBtn.disabled = false;
+      }
+  }
 
-    // New image button handler
-    newImageBtn.addEventListener('click', () => {
-        // Reset the form
-        imageUploadForm.reset();
-        uploadArea.innerHTML = `
-            <i class="fa-solid fa-cloud-arrow-up"></i>
-            <p>Glissez une image ou cliquez pour choisir</p>
-            <input type="file" id="image-input" accept="image/*" hidden>
-        `;
-        imageInput.value = '';
-        processImageBtn.disabled = true;
-        
-        // Switch views
-        resultContainer.style.display = 'none';
-        imageUploadForm.style.display = 'block';
-    });
+  // Form submission handler
+  imageUploadForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      if (!imageInput.files.length) return;
+      
+      const formData = new FormData();
+      formData.append('image', imageInput.files[0]);
+      
+      // Show loading state
+      processImageBtn.disabled = true;
+      processImageBtn.textContent = 'Analyse en cours...';
+      
+      try {
+          // Use the correct backend URL - modify this to match your Node.js backend location
+          const backendUrl = 'http://192.168.12.1:3000';
+          console.log('Sending request to:', `${backendUrl}/api/process-image`);
+          
+          // Create an AbortController for timeout functionality
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
+          
+          // Add progress indicator
+          let dots = '';
+          let progressInterval = setInterval(() => {
+              dots = dots.length < 3 ? dots + '.' : '';
+              processImageBtn.textContent = `Analyse en cours${dots}`;
+          }, 500);
+          
+          try {
+              const response = await fetch(`${backendUrl}/api/process-image`, {
+                  method: 'POST',
+                  body: formData,
+                  signal: controller.signal
+              });
+              
+              // Clear the timeout since the request completed
+              clearTimeout(timeoutId);
+              clearInterval(progressInterval);
+              
+              console.log('Response status:', response.status);
+              
+              if (!response.ok) {
+                  const errorText = await response.text();
+                  console.error('Server response:', errorText);
+                  throw new Error(`HTTP error! Status: ${response.status}`);
+              }
+              
+              // Safely parse JSON response
+              let data;
+              try {
+                  data = await response.json();
+                  console.log('Data received successfully');
+              } catch (jsonError) {
+                  console.error('JSON parsing error:', jsonError);
+                  throw new Error('Failed to parse server response');
+              }
+              
+              if (!data || !data.processedImage) {
+                  console.error('Invalid data received:', data);
+                  throw new Error('Invalid data received from server');
+              }
+              
+              console.log('Displaying processed image');
+              // Show the result
+              resultImage.src = `data:image/jpeg;base64,${data.processedImage}`;
+              imageUploadForm.style.display = 'none';
+              resultContainer.style.display = 'block';
+              
+              // Log the operation
+              logOperation('Analyse d\'image', 'Image traitée avec succès');
+              
+          } catch (fetchError) {
+              clearInterval(progressInterval);
+              if (fetchError.name === 'AbortError') {
+                  console.error('Request timed out after 30 seconds');
+                  throw new Error('Le traitement de l\'image a pris trop de temps (30 secondes). Veuillez réessayer.');
+              }
+              throw fetchError;
+          }
+          
+      } catch (error) {
+          console.error('Error processing image:', error);
+          alert(`Erreur lors du traitement de l'image: ${error.message}`);
+          
+          // Log the error
+          addDefect('Échec du traitement d\'image', 'critical');
+      } finally {
+          // Reset button state
+          processImageBtn.disabled = false;
+          processImageBtn.textContent = 'Analyser l\'image';
+      }
+  });
 
-    // Mode selection for detection
-    const imageModeRadio = document.getElementById('image-mode');
-    const realtimeModeRadio = document.getElementById('realtime-mode');
-    const imageDetectionContainer = document.getElementById('image-detection-container');
-    const realtimeDetectionContainer = document.getElementById('realtime-detection-container');
+  // New image button handler
+  newImageBtn.addEventListener('click', () => {
+      // Reset the form
+      imageUploadForm.reset();
+      uploadArea.innerHTML = `
+          <i class="fa-solid fa-cloud-arrow-up"></i>
+          <p>Glissez une image ou cliquez pour choisir</p>
+          <input type="file" id="image-input" accept="image/*" hidden>
+      `;
+      imageInput.value = '';
+      processImageBtn.disabled = true;
+      
+      // Switch views
+      resultContainer.style.display = 'none';
+      imageUploadForm.style.display = 'block';
+  });
 
-    imageModeRadio.addEventListener('change', function() {
-        if (this.checked) {
-            imageDetectionContainer.style.display = 'block';
-            realtimeDetectionContainer.style.display = 'none';
-        }
-    });
+  // Mode selection for detection
+  const imageModeRadio = document.getElementById('image-mode');
+  const realtimeModeRadio = document.getElementById('realtime-mode');
+  const imageDetectionContainer = document.getElementById('image-detection-container');
+  const realtimeDetectionContainer = document.getElementById('realtime-detection-container');
 
-    realtimeModeRadio.addEventListener('change', function() {
-        if (this.checked) {
-            imageDetectionContainer.style.display = 'none';
-            realtimeDetectionContainer.style.display = 'block';
-        }
-    });
+  imageModeRadio.addEventListener('change', function() {
+      if (this.checked) {
+          imageDetectionContainer.style.display = 'block';
+          realtimeDetectionContainer.style.display = 'none';
+          
+          // Disable real-time detection
+          if (socket && socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({
+                  type: 'detection_mode',
+                  enabled: false
+              }));
+          }
+      }
+  });
 
-    // Check if the stream is accessible
-    const streamImg = document.getElementById('camera-stream');
-    if (streamImg) {
-        streamImg.onload = function() {
-            updateStreamStatus(true);
-            console.log('Stream connected successfully');
-        };
-        
-        streamImg.onerror = function() {
-            updateStreamStatus(false);
-            console.log('Failed to connect to stream');
-            // Retry connecting after a delay
-            setTimeout(() => {
-                if (streamImg) {
-                    const timestamp = new Date().getTime();
-                    streamImg.src = `http://localhost:5000/video_feed?t=${timestamp}`;
-                }
-            }, 5000);
-        };
-    }
+  realtimeModeRadio.addEventListener('change', function() {
+      if (this.checked) {
+          imageDetectionContainer.style.display = 'none';
+          realtimeDetectionContainer.style.display = 'block';
+          
+          // Show the loading message
+          document.getElementById('detection-loading-container').style.display = 'flex';
+          document.getElementById('detection-result-container').style.display = 'none';
+          
+          // Request camera stream if not already active
+          if (socket && socket.readyState === WebSocket.OPEN) {
+              // First ensure we're getting the stream
+              socket.send(JSON.stringify({
+                  type: 'stream_request'
+              }));
+              
+              // Then enable real-time detection
+              socket.send(JSON.stringify({
+                  type: 'detection_mode',
+                  enabled: true
+              }));
+              
+              // Log operation
+              logOperation('Détection', 'Mode temps réel activé');
+          }
+      }
+  });
 
-    // Toggle detection button
-    const toggleDetectionBtn = document.getElementById('toggle-detection-btn');
-    if (toggleDetectionBtn) {
-        toggleDetectionBtn.addEventListener('click', function() {
-            const isActive = toggleDetectionBtn.classList.contains('active');
-            
-            // Here we would normally send a WebSocket message to the server
-            // But since the detection is now handled by Flask, we might need to 
-            // send an HTTP request to the Flask server instead
-            
-            // For now, just toggle the UI
-            toggleDetectionBtn.classList.toggle('active');
-            toggleDetectionBtn.textContent = isActive ? 'Activer la détection' : 'Désactiver la détection';
-            
-            logOperation('Détection', isActive ? 'Détection désactivée' : 'Détection activée');
-        });
-    }
+  // Toggle detection button
+  const toggleDetectionBtn = document.getElementById('toggle-detection-btn');
+  if (toggleDetectionBtn) {
+      toggleDetectionBtn.addEventListener('click', function() {
+          const isActive = toggleDetectionBtn.classList.contains('active');
+          
+          if (socket && socket.readyState === WebSocket.OPEN) {
+              socket.send(JSON.stringify({
+                  type: 'detection_mode',
+                  enabled: !isActive
+              }));
+              
+              toggleDetectionBtn.classList.toggle('active');
+              toggleDetectionBtn.textContent = isActive ? 'Activer la détection' : 'Désactiver la détection';
+              
+              logOperation('Détection', isActive ? 'Détection désactivée' : 'Détection activée');
+          }
+      });
+  }
 
-    // Clean up on page unload
-    window.addEventListener('beforeunload', () => {
-        // No need to clear directStreamInterval as it's been removed
-    });
+  // Clean up on page unload
+  window.addEventListener('beforeunload', () => {
+      // No need to clear directStreamInterval as it's been removed
+  });
 });
