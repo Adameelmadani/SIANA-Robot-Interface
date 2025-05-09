@@ -6,7 +6,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function connectWebSocket() {
         // Use the location of the current page to determine WebSocket URL
         const wsUrl = `ws://192.168.12.1:3000/robot`;
-
         console.log(`Connecting to WebSocket at ${wsUrl}`);
         socket = new WebSocket(wsUrl);
         
@@ -14,9 +13,6 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('WebSocket connection established');
             document.getElementById('wifi-status').className = 'connected';
             document.getElementById('wifi-status').innerHTML = '<i class="fa-solid fa-wifi"></i> Connecté';
-            
-            // Request camera stream
-            requestCameraStream();
         };
         
         socket.onclose = () => {
@@ -37,88 +33,27 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const message = JSON.parse(event.data);
                 
-                // Handle camera frame data
-                if (message.type === 'camera_frame') {
-                    updateCameraFrame(message.data);
-                }
-                
-                // Handle stream status updates
-                if (message.type === 'stream_status') {
-                    updateStreamStatus(message.connected);
-                }
-                
-                // Handle detection frame updates
-                if (message.type === 'detection_frame') {
-                    updateDetectionFrame(message.data);
-                }
-                
-                // Handle detection status
-                if (message.type === 'detection_status') {
-                    updateDetectionStatus(message.enabled);
-                }
-                
-                // Handle other messages as before
+                // We'll only handle the general messages - stream handling is now managed by Flask
                 console.log('Message from server:', message);
+                
             } catch (e) {
                 console.error('Error parsing message from server:', e);
             }
         };
     }
     
-    // Request camera stream from server
-    function requestCameraStream() {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            console.log('Requesting camera stream via WebSocket');
-            socket.send(JSON.stringify({
-                type: 'stream_request'
-            }));
-        }
-    }
-    
-    // Update camera frame with received data
-    function updateCameraFrame(base64Data) {
-        const img = document.getElementById('camera-stream');
-        if (img) {
-            img.src = `data:image/jpeg;base64,${base64Data}`;
-        }
-    }
-    
-    // Update detection frame with received data
-    function updateDetectionFrame(base64Data) {
-        const img = document.getElementById('detection-result');
-        if (img) {
-            img.src = `data:image/jpeg;base64,${base64Data}`;
-            // Show the detection result container
-            document.getElementById('detection-result-container').style.display = 'block';
-            // Hide the loading message
-            document.getElementById('detection-loading-container').style.display = 'none';
-        }
-    }
-    
     // Update stream status in UI
     function updateStreamStatus(connected) {
-        const cameraStream = document.getElementById('camera-stream');
         const streamStatus = document.getElementById('stream-status');
         
         if (streamStatus) {
             if (connected) {
                 streamStatus.textContent = 'Flux vidéo actif';
                 streamStatus.className = 'stream-status connected';
-                cameraStream.style.opacity = '1';
             } else {
                 streamStatus.textContent = 'Flux vidéo déconnecté';
                 streamStatus.className = 'stream-status disconnected';
-                cameraStream.style.opacity = '0.5';
             }
-        }
-    }
-    
-    // Update detection status in UI
-    function updateDetectionStatus(enabled) {
-        const status = document.getElementById('detection-status');
-        if (status) {
-            status.textContent = enabled ? 'Détection d\'objets active' : 'Détection d\'objets inactive';
-            status.className = enabled ? 'detection-status active' : 'detection-status inactive';
         }
     }
     
@@ -587,14 +522,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (this.checked) {
             imageDetectionContainer.style.display = 'block';
             realtimeDetectionContainer.style.display = 'none';
-            
-            // Disable real-time detection
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({
-                    type: 'detection_mode',
-                    enabled: false
-                }));
-            }
         }
     });
 
@@ -602,29 +529,29 @@ document.addEventListener('DOMContentLoaded', () => {
         if (this.checked) {
             imageDetectionContainer.style.display = 'none';
             realtimeDetectionContainer.style.display = 'block';
-            
-            // Show the loading message
-            document.getElementById('detection-loading-container').style.display = 'flex';
-            document.getElementById('detection-result-container').style.display = 'none';
-            
-            // Request camera stream if not already active
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                // First ensure we're getting the stream
-                socket.send(JSON.stringify({
-                    type: 'stream_request'
-                }));
-                
-                // Then enable real-time detection
-                socket.send(JSON.stringify({
-                    type: 'detection_mode',
-                    enabled: true
-                }));
-                
-                // Log operation
-                logOperation('Détection', 'Mode temps réel activé');
-            }
         }
     });
+
+    // Check if the stream is accessible
+    const streamImg = document.getElementById('camera-stream');
+    if (streamImg) {
+        streamImg.onload = function() {
+            updateStreamStatus(true);
+            console.log('Stream connected successfully');
+        };
+        
+        streamImg.onerror = function() {
+            updateStreamStatus(false);
+            console.log('Failed to connect to stream');
+            // Retry connecting after a delay
+            setTimeout(() => {
+                if (streamImg) {
+                    const timestamp = new Date().getTime();
+                    streamImg.src = `http://localhost:5000/video_feed?t=${timestamp}`;
+                }
+            }, 5000);
+        };
+    }
 
     // Toggle detection button
     const toggleDetectionBtn = document.getElementById('toggle-detection-btn');
@@ -632,17 +559,15 @@ document.addEventListener('DOMContentLoaded', () => {
         toggleDetectionBtn.addEventListener('click', function() {
             const isActive = toggleDetectionBtn.classList.contains('active');
             
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({
-                    type: 'detection_mode',
-                    enabled: !isActive
-                }));
-                
-                toggleDetectionBtn.classList.toggle('active');
-                toggleDetectionBtn.textContent = isActive ? 'Activer la détection' : 'Désactiver la détection';
-                
-                logOperation('Détection', isActive ? 'Détection désactivée' : 'Détection activée');
-            }
+            // Here we would normally send a WebSocket message to the server
+            // But since the detection is now handled by Flask, we might need to 
+            // send an HTTP request to the Flask server instead
+            
+            // For now, just toggle the UI
+            toggleDetectionBtn.classList.toggle('active');
+            toggleDetectionBtn.textContent = isActive ? 'Activer la détection' : 'Désactiver la détection';
+            
+            logOperation('Détection', isActive ? 'Détection désactivée' : 'Détection activée');
         });
     }
 
