@@ -89,6 +89,37 @@ wss.on('connection', (ws, req) => {
                 }
             }
 
+            // Handle automatic mode messages from frontend to Pi
+            if (!isRaspberryPi && data.type === 'automatic') {
+                if (piConnection && piConnection.readyState === WebSocket.OPEN) {
+                    piConnection.send(JSON.stringify(data));
+                    console.log(`Automatic mode command forwarded to Pi: enabled=${data.enabled}`);
+                    
+                    // Send confirmation back to all frontend clients
+                    frontendConnections.forEach(client => {
+                        if (client.readyState === WebSocket.OPEN) {
+                            client.send(JSON.stringify({
+                                type: 'automatic_status',
+                                enabled: data.enabled
+                            }));
+                        }
+                    });
+                } else {
+                    console.log('Cannot forward automatic mode command: Pi not connected');
+                    // Inform the client that Pi isn't connected
+                    ws.send(JSON.stringify({
+                        type: 'error',
+                        message: 'Raspberry Pi is not connected'
+                    }));
+                    
+                    // Also send automatic_status with enabled=false to update UI
+                    ws.send(JSON.stringify({
+                        type: 'automatic_status',
+                        enabled: false
+                    }));
+                }
+            }
+
             // Handle stream request from frontend
             if (!isRaspberryPi && data.type === 'stream_request') {
                 if (esp32Cam.isConnected()) {
@@ -130,11 +161,26 @@ wss.on('connection', (ws, req) => {
             
             // Forward Pi messages to all frontend clients
             if (isRaspberryPi) {
-                frontendConnections.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(message);
-                    }
-                });
+                // Check for completion messages from automatic mode
+                if (data.type === 'automatic_completed') {
+                    console.log('Received automatic mode completion notification from Pi');
+                    // Inform all frontend clients that automatic mode has completed
+                    frontendConnections.forEach(client => {
+                        if (client.readyState === WebSocket.OPEN) {
+                            client.send(JSON.stringify({
+                                type: 'automatic_status',
+                                enabled: false
+                            }));
+                        }
+                    });
+                } else {
+                    // Forward all other Pi messages to frontend clients
+                    frontendConnections.forEach(client => {
+                        if (client.readyState === WebSocket.OPEN) {
+                            client.send(message);
+                        }
+                    });
+                }
             }
             
         } catch (e) {

@@ -225,7 +225,14 @@ def run_automatic_base_sequence():
         move_robot_base("backward", False, auto_speed); logger.info("AUTOMATIC MODE: Returned to start and stopped.")
     except KeyboardInterrupt: logger.info("AUTOMATIC MODE: Interrupted by user. Stopping motors."); all_dc_motors_stop(); raise
     except Exception as e: logger.error(f"AUTOMATIC MODE: Error during sequence: {e}"); all_dc_motors_stop()
-    finally: logger.info("AUTOMATIC MODE: Sequence function finished or was interrupted.")
+    finally: 
+        logger.info("AUTOMATIC MODE: Sequence function finished or was interrupted.")
+        # Notify server that automatic sequence has completed
+        try:
+            ws.send(json.dumps({"type": "automatic_completed"}))
+            logger.info("AUTOMATIC MODE: Completion notification sent to server.")
+        except Exception as e:
+            logger.error(f"AUTOMATIC MODE: Failed to send completion notification: {e}")
 
 # --- WebSocket Event Handlers (Modified on_message) ---
 def on_message(ws, message):
@@ -296,10 +303,14 @@ def on_message(ws, message):
                 logger.warning(f"ARM_SERVO CMD: motor_id {motor_id} not configured for arm control.")
 
         elif message_type == 'automatic':
-            logger.info("WebSocket command received to START automatic base sequence.")
-            logger.warning(">>> Automatic sequence will BLOCK ALL OTHER WebSocket commands until finished. <<<")
-            run_automatic_base_sequence()
-            logger.info("Automatic base sequence completed. Resuming WebSocket listening.")
+            enabled = data.get('enabled', False)
+            if enabled:
+                logger.info("WebSocket command received to START automatic base sequence.")
+                logger.warning(">>> Automatic sequence will BLOCK ALL OTHER WebSocket commands until finished. <<<")
+                run_automatic_base_sequence()
+                logger.info("Automatic base sequence completed. Resuming WebSocket listening.")
+            else:
+                logger.info("WebSocket command received to DISABLE automatic mode (no action needed).")
         
         else:
             logger.warning(f"Received unknown message type: '{message_type}'")
