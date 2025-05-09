@@ -97,9 +97,6 @@ esp_err_t streamHandler(httpd_req_t *req) {
 
     // Release the frame buffer
     esp_camera_fb_return(fb);
-    
-    // Add delay to limit to ~5fps (1000ms/5 = 200ms)
-    delay(200);
   }
 
   return ESP_OK;
