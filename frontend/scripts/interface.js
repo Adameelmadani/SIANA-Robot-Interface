@@ -230,6 +230,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (socket && socket.readyState === WebSocket.OPEN) {
                 const message = { type: 'automatic', enabled: newActiveState };
                 socket.send(JSON.stringify(message));
+                console.log(`Sending automatic mode command: ${JSON.stringify(message)}`);
+                
+                // Visually update button state immediately
                 if (newActiveState) {
                     autonomousModeBtn.classList.add('active');
                     autonomousModeBtn.innerHTML = '<i class="fa-solid fa-robot"></i> Mode Autonome (Activé)';
