@@ -2,6 +2,7 @@
 #include "Arduino.h"
 #include <WiFi.h>
 #include <esp_http_server.h>
+#include <esp_timer.h>
 
 // Camera model pins (for ESP32-CAM AiThinker)
 #define PWDN_GPIO_NUM     32
@@ -23,6 +24,10 @@
 
 #define AP_SSID "ESP32-CAM"
 #define AP_PASS "12345678"
+
+// Desired frame rate in milliseconds (1000 ms / 3 FPS)
+const int FRAME_DELAY_MS = 1000 / 3;
+unsigned long lastFrameTime = 0;
 
 // Function to initialize the camera
 bool initCamera() {
@@ -78,25 +83,31 @@ esp_err_t streamHandler(httpd_req_t *req) {
   httpd_resp_set_type(req, "multipart/x-mixed-replace; boundary=frame");
 
   while (true) {
-    fb = esp_camera_fb_get();
-    if (!fb) {
-      Serial.println("Camera capture failed");
-      httpd_resp_send_500(req);
-      return ESP_FAIL;
+    unsigned long currentTime = millis();
+    if (currentTime - lastFrameTime >= FRAME_DELAY_MS) {
+      fb = esp_camera_fb_get();
+      if (!fb) {
+        Serial.println("Camera capture failed");
+        httpd_resp_send_500(req);
+        return ESP_FAIL;
+      }
+      lastFrameTime = currentTime;
+
+      // Send frame boundary
+      httpd_resp_send_chunk(req, "--frame\r\n", strlen("--frame\r\n"));
+
+      // Send frame headers
+      int headerLen = snprintf(buffer, sizeof(buffer), partHeader, fb->len);
+      httpd_resp_send_chunk(req, buffer, headerLen);
+
+      // Send frame data
+      httpd_resp_send_chunk(req, (const char *)fb->buf, fb->len);
+
+      // Release the frame buffer
+      esp_camera_fb_return(fb);
+    } else {
+      delay(1); // Small delay to avoid busy-waiting
     }
-
-    // Send frame boundary
-    httpd_resp_send_chunk(req, "--frame\r\n", strlen("--frame\r\n"));
-
-    // Send frame headers
-    int headerLen = snprintf(buffer, sizeof(buffer), partHeader, fb->len);
-    httpd_resp_send_chunk(req, buffer, headerLen);
-
-    // Send frame data
-    httpd_resp_send_chunk(req, (const char *)fb->buf, fb->len);
-
-    // Release the frame buffer
-    esp_camera_fb_return(fb);
   }
 
   return ESP_OK;

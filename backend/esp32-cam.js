@@ -15,7 +15,7 @@ class ESP32CamHandler extends EventEmitter {
     // Configuration
     this.streamUrl = 'http://192.168.4.1/stream';
     this.framesDir = path.join(__dirname, 'frames');
-    this.maxFrames = 10; // Increased from 5 to match the lower frame rate
+    this.maxFrames = 5;
     
     // State variables
     this.latestFrame = null;
