@@ -4,7 +4,7 @@ import time
 import logging
 import RPi.GPIO as GPIO
 from adafruit_servokit import ServoKit
-# import sys # No longer needed if not using command-line args for mode
+# import sys # No longer needed for command-line mode selection
 
 # Set up logging
 logging.basicConfig(level=logging.INFO,
@@ -23,11 +23,23 @@ DC_PWM_FREQUENCY = 8000
 DEFAULT_DC_SPEED = 100
 
 # --- Robotic Arm Servo (PCA9685 & ServoKit) Configuration ---
-SERVO_ARM_CHANNELS = [0, 1, 2]
-CALIBRATED_STOP_THROTTLES = {0: 0.0670, 1: 0.0670, 2: 0.0670}
-SERVO_MOVEMENT_THROTTLE_VALUE = 0.3
 SERVO_PCA_ADDRESS = 0x40
-SERVO_PWM_FREQUENCY = 50
+SERVO_PWM_FREQUENCY = 50 # Common for servos, ServoKit default is often 50Hz
+
+# Continuous Rotation Servos for Arm (e.g., Base, Shoulder, Elbow - S4,S3,S2)
+CONTINUOUS_SERVO_CHANNELS_ARM = [0, 1, 2] # Channels for continuous servos
+CALIBRATED_STOP_THROTTLES = {
+    0: 0.0670,
+    1: 0.0670,
+    2: 0.0670
+}
+SERVO_MOVEMENT_THROTTLE_VALUE = 0.3 # For continuous servos
+
+# Positional Servo for Arm (e.g., Wrist - S1 on channel 3)
+POSITIONAL_SERVO_CHANNEL_S1 = 3
+POSITIONAL_SERVO_S1_INITIAL_ANGLE = 90.0
+POSITIONAL_SERVO_S1_MIN_ANGLE = 0.0  # Min angle for clamping
+POSITIONAL_SERVO_S1_MAX_ANGLE = 180.0 # Max angle for clamping (ServoKit default actuation_range)
 
 # --- Global PWM Objects (DC Motors) ---
 pwm_right_lpwm, pwm_right_rpwm, pwm_left_lpwm, pwm_left_rpwm = None, None, None, None
@@ -35,7 +47,7 @@ pwm_right_lpwm, pwm_right_rpwm, pwm_left_lpwm, pwm_left_rpwm = None, None, None,
 # --- Global ServoKit Object (Arm Servos) ---
 kit = None
 
-# --- Setup Functions (setup_dc_motors_gpio, setup_arm_servos - keep as before) ---
+# --- Setup Functions ---
 def setup_dc_motors_gpio():
     global pwm_right_lpwm, pwm_right_rpwm, pwm_left_lpwm, pwm_left_rpwm
     logger.info("Setting up GPIO for DC Motors...")
@@ -63,13 +75,25 @@ def setup_arm_servos():
     try:
         kit = ServoKit(channels=16, address=SERVO_PCA_ADDRESS, frequency=SERVO_PWM_FREQUENCY)
         logger.info(f"ServoKit initialized (PCA9685 on I2C addr 0x{SERVO_PCA_ADDRESS:02X}, Freq: {SERVO_PWM_FREQUENCY}Hz).")
-        for motor_id in SERVO_ARM_CHANNELS:
+
+        # Initialize Continuous Rotation Servos
+        for motor_id in CONTINUOUS_SERVO_CHANNELS_ARM:
             if motor_id in CALIBRATED_STOP_THROTTLES:
                 stop_throttle = CALIBRATED_STOP_THROTTLES[motor_id]
                 kit.continuous_servo[motor_id].throttle = stop_throttle
-                logger.info(f"  Arm servo on channel {motor_id} initialized to stop throttle: {stop_throttle:.4f}")
+                logger.info(f"  Continuous servo on channel {motor_id} initialized to stop throttle: {stop_throttle:.4f}")
             else:
-                logger.warning(f"  No calibrated stop throttle for arm servo {motor_id}.")
+                logger.warning(f"  No calibrated stop throttle for continuous servo {motor_id}.")
+
+        # Initialize Positional Servo (S1 - Wrist)
+        try:
+            # Clamp initial angle just in case
+            angle_to_set = max(POSITIONAL_SERVO_S1_MIN_ANGLE, min(POSITIONAL_SERVO_S1_MAX_ANGLE, POSITIONAL_SERVO_S1_INITIAL_ANGLE))
+            kit.servo[POSITIONAL_SERVO_CHANNEL_S1].angle = angle_to_set
+            logger.info(f"  Positional servo on channel {POSITIONAL_SERVO_CHANNEL_S1} initialized to {angle_to_set:.1f}°.")
+        except Exception as e:
+            logger.error(f"  Error setting initial angle for positional servo {POSITIONAL_SERVO_CHANNEL_S1}: {e}")
+
     except ValueError as e:
         logger.error(f"Error initializing ServoKit (PCA9685): {e}.")
         kit = None
@@ -77,8 +101,7 @@ def setup_arm_servos():
         logger.error(f"Unexpected error initializing ServoKit: {e}")
         kit = None
 
-# --- Control Functions (set_dc_motor_speed, all_dc_motors_stop, cleanup_dc_motors_gpio, ---
-# --- control_servo_motor, all_arm_servos_stop, move_robot_base - keep as before) ---
+# --- Control Functions ---
 def set_dc_motor_speed(pwm_pin_forward, pwm_pin_backward, direction, speed):
     if direction == 1: pwm_pin_forward.ChangeDutyCycle(speed); pwm_pin_backward.ChangeDutyCycle(0)
     elif direction == -1: pwm_pin_forward.ChangeDutyCycle(0); pwm_pin_backward.ChangeDutyCycle(speed)
@@ -97,39 +120,87 @@ def cleanup_dc_motors_gpio():
     if pwm_right_rpwm: pwm_right_rpwm.stop()
     if pwm_left_lpwm: pwm_left_lpwm.stop()
     if pwm_left_rpwm: pwm_left_rpwm.stop()
-    GPIO.cleanup() # This cleans up ALL GPIO channels used by RPi.GPIO in this script
+    GPIO.cleanup()
     logger.info("DC Motor GPIO cleanup complete.")
 
-def control_servo_motor(motor_id, value_direction_str, is_active):
+def control_continuous_servo(motor_id, value_direction_str, is_active): # Renamed for clarity
     global kit
     if kit is None: logger.error("ARM_SERVO CMD: ServoKit not initialized."); return
-    if motor_id not in SERVO_ARM_CHANNELS: logger.warning(f"ARM_SERVO CMD: Invalid motor_id {motor_id}."); return
-    stop_throttle = CALIBRATED_STOP_THROTTLES.get(motor_id, 0.0)
+    if motor_id not in CONTINUOUS_SERVO_CHANNELS_ARM: # Check against continuous list
+        logger.warning(f"ARM_SERVO CMD: Invalid continuous motor_id {motor_id}. Expected one of {CONTINUOUS_SERVO_CHANNELS_ARM}.")
+        return
+    
+    stop_throttle = CALIBRATED_STOP_THROTTLES.get(motor_id)
+    if stop_throttle is None:
+        logger.error(f"ARM_SERVO CMD: No calibrated stop throttle for continuous motor_id {motor_id}. Using 0.0.")
+        stop_throttle = 0.0
+    
     target_throttle = stop_throttle
+    action_description = "STOP"
+    direction_log_text = f"(Throttle: {target_throttle:.4f})"
+
     if is_active:
-        if value_direction_str == "right": target_throttle = SERVO_MOVEMENT_THROTTLE_VALUE
-        elif value_direction_str == "left": target_throttle = -SERVO_MOVEMENT_THROTTLE_VALUE
-        else: logger.warning(f"ARM_SERVO CMD: Invalid value_direction '{value_direction_str}'. Stopping motor {motor_id}.")
-    verb = "RUN" if is_active and target_throttle != stop_throttle else "STOP"
-    direction_text = ""
-    if is_active and target_throttle != stop_throttle:
-        direction_text = "RIGHT" if target_throttle > stop_throttle else "LEFT" if target_throttle < stop_throttle else " (at stop throttle)"
+        if value_direction_str == "right":
+            target_throttle = SERVO_MOVEMENT_THROTTLE_VALUE
+            action_description = "RUN RIGHT"
+        elif value_direction_str == "left":
+            target_throttle = -SERVO_MOVEMENT_THROTTLE_VALUE
+            action_description = "RUN LEFT"
+        else:
+            logger.warning(f"ARM_SERVO CMD: Invalid value_direction '{value_direction_str}' for continuous motor {motor_id}. Stopping.")
+            # target_throttle remains stop_throttle
+        direction_log_text = f"(Throttle: {target_throttle:.4f})"
+    
+    logger.info(f"ARM_SERVO CMD (Continuous): Motor {motor_id} {action_description} {direction_log_text}")
+    try:
+        kit.continuous_servo[motor_id].throttle = target_throttle
+    except Exception as e:
+        logger.error(f"ARM_SERVO CMD: Error setting throttle for continuous motor {motor_id}: {e}")
 
-    logger.info(f"ARM_SERVO CMD: Motor {motor_id} {verb} {direction_text} (Throttle: {target_throttle:.4f})")
-    try: kit.continuous_servo[motor_id].throttle = target_throttle
-    except Exception as e: logger.error(f"ARM_SERVO CMD: Error for motor {motor_id}: {e}")
+def set_positional_servo_angle(channel, target_angle):
+    global kit
+    if kit is None: logger.error("ARM_SERVO CMD: ServoKit not initialized."); return
+    
+    try:
+        # Clamp target angle to servo's limits (using defined constants)
+        clamped_target_angle = max(POSITIONAL_SERVO_S1_MIN_ANGLE, min(POSITIONAL_SERVO_S1_MAX_ANGLE, float(target_angle)))
 
-def all_arm_servos_stop():
+        if abs(clamped_target_angle - float(target_angle)) > 0.01: # Check if clamping occurred
+            logger.warning(f"ARM_SERVO CMD (Positional): Target angle {target_angle}° for servo {channel} was clamped to {clamped_target_angle:.1f}°.")
+        
+        logger.info(f"ARM_SERVO CMD (Positional): Moving servo {channel} to {clamped_target_angle:.1f}°...")
+        kit.servo[channel].angle = clamped_target_angle
+    except ValueError:
+        logger.error(f"ARM_SERVO CMD (Positional): Invalid angle format '{target_angle}' for servo {channel}.")
+    except Exception as e:
+        logger.error(f"ARM_SERVO CMD (Positional): Error setting angle for servo {channel}: {e}")
+
+
+def all_arm_servos_stop(): # Now handles both types for "stop" or "relax"
     global kit
     if kit is not None:
-        logger.info("ARM_SERVO COMMAND: Stopping all defined arm servos.")
-        for motor_id in SERVO_ARM_CHANNELS:
+        logger.info("ARM_SERVO COMMAND: Stopping/relaxing all defined arm servos.")
+        # Stop continuous servos
+        for motor_id in CONTINUOUS_SERVO_CHANNELS_ARM:
             stop_throttle = CALIBRATED_STOP_THROTTLES.get(motor_id, 0.0)
-            try: kit.continuous_servo[motor_id].throttle = stop_throttle
-            except Exception as e: logger.error(f"  Error stopping arm servo {motor_id}: {e}")
-    else: logger.info("ARM_SERVO COMMAND: ServoKit not initialized.")
+            try:
+                kit.continuous_servo[motor_id].throttle = stop_throttle
+                logger.debug(f"  Continuous servo {motor_id} throttle set to {stop_throttle:.4f}")
+            except Exception as e:
+                logger.error(f"  Error stopping continuous servo {motor_id}: {e}")
+        
+        # Relax positional servos
+        try:
+            if POSITIONAL_SERVO_CHANNEL_S1 is not None: # Check if it's defined
+                 logger.debug(f"  Relaxing positional servo {POSITIONAL_SERVO_CHANNEL_S1} (angle=None).")
+                 kit.servo[POSITIONAL_SERVO_CHANNEL_S1].angle = None
+        except Exception as e:
+            logger.error(f"  Error relaxing positional servo {POSITIONAL_SERVO_CHANNEL_S1}: {e}")
+    else:
+        logger.info("ARM_SERVO COMMAND: ServoKit not initialized.")
 
 def move_robot_base(direction, is_active, speed=DEFAULT_DC_SPEED):
+    # ... (This function remains unchanged from your last version) ...
     logger.info(f"DC_MOTORS CMD: Direction: {direction}, Active: {is_active}, Speed: {speed}")
     if not all([pwm_right_lpwm, pwm_right_rpwm, pwm_left_lpwm, pwm_left_rpwm]):
         logger.error("DC_MOTORS: RPi.GPIO PWM objects not initialized."); return
@@ -163,15 +234,13 @@ def on_message(ws, message):
         message_type = data.get('type', '').lower()
         logger.debug(f"Received message: {data}")
 
-        if message_type == 'command': # Universal STOP command
+        if message_type == 'command':
             action = data.get('action', '').lower()
             if action == 'stop':
                 logger.info("COMMAND RECEIVED: E-STOP - Stopping all systems.")
                 all_dc_motors_stop()
                 all_arm_servos_stop()
-                # Note: If 'automatic' sequence is running, this stop command will only be processed
-                # AFTER the automatic sequence completes, due to its blocking nature.
-                return # Processed the stop command
+                return
             else:
                 logger.warning(f"Received 'command' type with unknown action: '{action}'")
 
@@ -189,36 +258,47 @@ def on_message(ws, message):
                 dc_speed = DEFAULT_DC_SPEED
             move_robot_base(direction, is_active, dc_speed)
 
-        elif message_type == 'servo': # For arm servo control
+        elif message_type == 'servo': # For ALL arm servos (continuous or positional)
             motor_id_val = data.get('motor_id')
-            value_direction_str = data.get('value', '').lower() # "left" or "right"
-            is_active_servo = data.get('is_active', False)
             motor_id = -1 # Default to invalid
-            if isinstance(motor_id_val, int) and motor_id_val in SERVO_ARM_CHANNELS:
-                motor_id = motor_id_val
-            else:
-                try:
-                    motor_id_int = int(motor_id_val)
-                    if motor_id_int in SERVO_ARM_CHANNELS:
-                        motor_id = motor_id_int
-                except (ValueError, TypeError): pass
-            
-            if motor_id == -1:
-                logger.warning(f"ARM_SERVO CMD: Invalid or missing motor_id: '{motor_id_val}'. Expected one of {SERVO_ARM_CHANNELS}.")
-                return
-            
-            if value_direction_str not in ["left", "right"]:
-                logger.warning(f"ARM_SERVO CMD: Invalid value_direction '{value_direction_str}' for motor {motor_id}. Must be 'left' or 'right'.")
-                if is_active_servo: # If it was an active command with bad direction, stop it.
-                    control_servo_motor(motor_id, "", False) 
-                return
 
-            control_servo_motor(motor_id, value_direction_str, is_active_servo)
-        
+            # Try to parse motor_id as integer
+            try:
+                motor_id = int(motor_id_val)
+            except (ValueError, TypeError):
+                logger.warning(f"ARM_SERVO CMD: motor_id '{motor_id_val}' is not a valid integer.")
+                return # Invalid motor_id format
+
+            # Check if it's the positional servo (S1 - Wrist)
+            if motor_id == POSITIONAL_SERVO_CHANNEL_S1:
+                angle_val = data.get('direction') # Using 'direction' field for angle as requested
+                if angle_val is None:
+                    logger.warning(f"ARM_SERVO CMD (Positional): 'direction' (angle) field missing for motor {motor_id}.")
+                    return
+                try:
+                    target_angle = float(angle_val)
+                    set_positional_servo_angle(motor_id, target_angle)
+                except ValueError:
+                    logger.warning(f"ARM_SERVO CMD (Positional): Invalid angle value '{angle_val}' for motor {motor_id}.")
+            
+            # Check if it's one of the continuous servos
+            elif motor_id in CONTINUOUS_SERVO_CHANNELS_ARM:
+                value_direction_str = data.get('value', '').lower() # "left" or "right"
+                is_active_servo = data.get('is_active', False) # For continuous, is_active matters
+
+                if value_direction_str not in ["left", "right"] and is_active_servo:
+                    logger.warning(f"ARM_SERVO CMD (Continuous): Invalid value_direction '{value_direction_str}' for motor {motor_id} while active. Stopping servo.")
+                    control_continuous_servo(motor_id, "", False) # Force stop
+                    return
+                control_continuous_servo(motor_id, value_direction_str, is_active_servo)
+            
+            else: # motor_id is not recognized for any arm servo
+                logger.warning(f"ARM_SERVO CMD: motor_id {motor_id} not configured for arm control.")
+
         elif message_type == 'automatic':
             logger.info("WebSocket command received to START automatic base sequence.")
             logger.warning(">>> Automatic sequence will BLOCK ALL OTHER WebSocket commands until finished. <<<")
-            run_automatic_base_sequence() # Call the sequence directly (blocking)
+            run_automatic_base_sequence()
             logger.info("Automatic base sequence completed. Resuming WebSocket listening.")
         
         else:
@@ -231,7 +311,7 @@ def on_message(ws, message):
         import traceback
         logger.error(traceback.format_exc())
 
-# --- on_error, on_close, on_open, connect_websocket (keep as before) ---
+# --- on_error, on_close, on_open, connect_websocket (Keep as before) ---
 def on_error(ws, error): logger.error(f"WebSocket error: {error}")
 def on_close(ws, close_status_code, close_msg):
     logger.warning(f"WS closed. Code: {close_status_code}, Msg: {close_msg}. Reconnecting...")
@@ -250,7 +330,7 @@ if __name__ == "__main__":
         setup_dc_motors_gpio()
         setup_arm_servos()
         logger.info("Starting Raspberry Pi robot controller.")
-        logger.info("Listening for WebSocket commands for DC base, servo arm, and 'automatic' sequence trigger.")
+        logger.info("Listening for WebSocket commands.")
         connect_websocket()
     except KeyboardInterrupt:
         logger.info("Program interrupted by user (Ctrl+C).")
