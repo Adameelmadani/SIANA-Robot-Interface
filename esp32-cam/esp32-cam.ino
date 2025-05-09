@@ -25,8 +25,8 @@
 #define AP_SSID "ESP32-CAM"
 #define AP_PASS "12345678"
 
-// Desired frame rate in milliseconds (1000 ms / 3 FPS)
-const int FRAME_DELAY_MS = 1000 / 3;
+// Desired frame rate in milliseconds (1000 ms / 1 FPS)
+const int FRAME_DELAY_MS = 1000 / 1;
 unsigned long lastFrameTime = 0;
 
 // Function to initialize the camera

@@ -568,7 +568,7 @@ th {
 /* Real-time detection styles */
 .detection-status {
     position: absolute;
-    top: 40px;
+    top: 44px;
     left: 10px;
     padding: 5px 10px;
     border-radius: 20px;
