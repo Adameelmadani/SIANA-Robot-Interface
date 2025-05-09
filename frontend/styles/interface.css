@@ -9,6 +9,7 @@
     --success-color: #27ae60;
     --warning-color: #f39c12;
     --danger-color: #c0392b;
+    --info-color: #3da1c7; 
 }
 
 * {
@@ -72,14 +73,14 @@ h1, h2, h3 {
 }
 
 .left-panel {
-    flex: 1.5;
+    flex: 1; 
     display: flex;
     flex-direction: column;
     gap: 20px;
 }
 
 .right-panel {
-    flex: 1;
+    flex: 1.8; 
     display: flex;
     flex-direction: column;
     gap: 20px;
@@ -89,31 +90,46 @@ h1, h2, h3 {
     background-color: white;
     border-radius: 10px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    padding-top: 30px;
-    padding-bottom: 30px;
-    padding-right: 15px;
-    padding-left: 15px;
+    padding: 20px; /* Ajustement du padding */
+    display: flex; 
+    flex-direction: column;
+    min-height: 450px; /* Hauteur minimale pour la section caméra */
 }
 
 .camera-container {
     position: relative;
     margin-top: 10px;
+    flex-grow: 1; 
+    display: flex;
+    flex-direction: column;
 }
+#image-detection-container, #realtime-detection-container {
+    flex-grow: 1; 
+    display: flex;
+    flex-direction: column;
+}
+#realtime-view-wrapper {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column; 
+}
+
 
 .stream-container {
     position: relative;
     width: 100%;
-    height: 350px;
+    height: 420px; 
     background-color: #333;
     border-radius: 5px;
     overflow: hidden;
     margin-bottom: 10px;
+    flex-shrink: 0; 
 }
 
 #camera-stream {
     width: 100%;
-    height: 100%;
-    object-fit: contain;
+    height: 100%; 
+    object-fit: cover; 
     transition: opacity 0.3s ease;
 }
 
@@ -136,17 +152,9 @@ h1, h2, h3 {
     background-color: var(--danger-color);
 }
 
-#camera-stream {
-    width: 100%;
-    height: 350px;
-    background-color: #333;
-    border-radius: 5px;
-    object-fit: cover;
-}
-
 .luminosity {
     position: absolute;
-    top: 10px;
+    top: 10px; 
     right: 10px;
     background-color: rgba(0,0,0,0.6);
     color: white;
@@ -155,6 +163,7 @@ h1, h2, h3 {
     display: flex;
     align-items: center;
     gap: 5px;
+    z-index: 2; 
 }
 
 .controls {
@@ -197,98 +206,21 @@ h1, h2, h3 {
     background-color: var(--accent-color);
 }
 
-.status-panel {
+/* events-panel, status-panel, maintenance-panel ont été supprimés, donc leurs styles aussi ou ils ne s'appliqueront pas */
+
+/* STYLE POUR LE CONTENEUR DU BOUTON MODE AUTONOME */
+.autonomous-mode-container {
     background-color: white;
     border-radius: 10px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     padding: 15px;
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-.status-item {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-}
-
-.status-item i {
-    font-size: 24px;
-    color: var(--primary-color);
-    width: 30px;
-    text-align: center;
-}
-
-.status-info {
-    flex: 1;
-}
-
-.status-info h3 {
-    font-size: 16px;
-    margin-bottom: 5px;
-}
-
-.battery-meter {
-    width: 100%;
-    height: 12px;
-    background-color: #e0e0e0;
-    border-radius: 6px;
-    overflow: hidden;
-    margin-bottom: 5px;
-}
-
-.battery-level {
-    height: 100%;
-    background-color: var(--success-color);
-    border-radius: 6px;
-}
-
-.speed-control {
-    display: flex;
-    align-items: center;
-    flex-direction: column;
-    gap: 5px;
-    margin-top: 5px;
-}
-
-#speed-slider {
-    width: 100%;
-    margin: 10px 0;
-}
-
-.speed-buttons {
-    display: flex;
-    gap: 10px;
-}
-
-.speed-buttons button {
-    width: 30px;
-    height: 30px;
-    background-color: var(--secondary-color);
-    color: white;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-}
-
-.events-panel, .defects-panel, .maintenance-panel {
-    background-color: white;
-    border-radius: 10px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    padding: 15px;
-}
-
-.action-buttons {
-    display: flex;
-    justify-content: space-between;
-    gap: 10px;
-    margin-top: 10px;
+    display: flex; /* Pour centrer le bouton */
+    justify-content: center;
 }
 
 .action-btn {
-    flex: 1;
-    padding: 12px;
+    /* flex: 1; /* Peut être retiré si le bouton n'a pas besoin de s'étendre dans son nouveau conteneur */
+    padding: 12px 20px; /* Un peu plus de padding pour le bouton unique */
     border: none;
     border-radius: 5px;
     color: white;
@@ -298,20 +230,32 @@ h1, h2, h3 {
     justify-content: center;
     align-items: center;
     gap: 8px;
+    transition: opacity 0.2s, background-color 0.3s;
+    min-width: 200px; /* Largeur minimale pour le bouton autonome */
+}
+.action-btn:hover {
+    opacity: 0.9;
 }
 
-.success {
-    background-color: var(--success-color);
+.action-btn.info {
+    background-color: var(--info-color);
+}
+.action-btn.info.active { 
+    background-color: var(--success-color); 
 }
 
-.danger {
-    background-color: var(--danger-color);
+
+.defects-panel { /* La section défauts reste */
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    padding: 15px;
 }
 
 .defects-panel ul {
     list-style: none;
     margin-top: 10px;
-    max-height: 150px;
+    max-height: 150px; 
     overflow-y: auto;
 }
 
@@ -322,32 +266,22 @@ h1, h2, h3 {
     padding: 8px 0;
     border-bottom: 1px solid #eee;
 }
+.defect:last-child {
+    border-bottom: none;
+}
 
 .warning {
+    color: var(--warning-color);
+}
+.warning i { 
     color: var(--warning-color);
 }
 
 .critical {
     color: var(--danger-color);
 }
-
-.component-status {
-    margin-top: 10px;
-}
-
-.component {
-    display: flex;
-    justify-content: space-between;
-    padding: 8px 0;
-    border-bottom: 1px solid #eee;
-}
-
-.status {
-    font-weight: bold;
-}
-
-.good {
-    color: var(--success-color);
+.critical i { 
+    color: var(--danger-color);
 }
 
 .history-panel {
@@ -379,27 +313,21 @@ th {
     background-color: var(--light-bg);
     position: sticky;
     top: 0;
+    z-index: 1; 
 }
 
-@media (max-width: 1024px) {
-    .main-content {
-        flex-direction: column;
-    }
-    
-    .left-panel, .right-panel {
-        width: 100%;
-    }
-}
 
 /* Image upload styles */
 .image-upload-container {
     width: 100%;
-    height: 350px;
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1; 
 }
 
 .upload-area {
     width: 100%;
-    height: 300px;
+    min-height: 300px; 
     border: 2px dashed var(--secondary-color);
     border-radius: 5px;
     display: flex;
@@ -408,11 +336,13 @@ th {
     align-items: center;
     cursor: pointer;
     transition: all 0.3s;
-    background-color: rgba(52, 152, 219, 0.1);
+    background-color: rgba(52, 152, 219, 0.05);
+    padding: 20px;
+    flex-grow: 1; 
 }
 
 .upload-area:hover {
-    background-color: rgba(52, 152, 219, 0.2);
+    background-color: rgba(52, 152, 219, 0.1);
 }
 
 .upload-area i {
@@ -432,6 +362,7 @@ th {
     cursor: pointer;
     font-size: 16px;
     transition: all 0.3s;
+    flex-shrink: 0; 
 }
 
 #process-image-btn:disabled {
@@ -443,17 +374,27 @@ th {
     background-color: var(--primary-color);
 }
 
-.result-container {
+.result-container { 
     width: 100%;
-    height: 350px;
+    margin-top: 10px; 
+    flex-grow: 1; 
+    display: flex; 
+    flex-direction: column; 
 }
 
-#result-image {
+#result-image, #detection-result { 
     width: 100%;
-    height: 300px;
+    max-height: 370px; 
     object-fit: contain;
     border-radius: 5px;
+    display: block; 
+    flex-grow: 1; 
+    min-height: 0; 
 }
+#detection-result {
+    background-color: #333; 
+}
+
 
 #new-image-btn {
     margin-top: 10px;
@@ -465,6 +406,7 @@ th {
     border-radius: 5px;
     cursor: pointer;
     transition: all 0.3s;
+    flex-shrink: 0; 
 }
 
 #new-image-btn:hover {
@@ -474,15 +416,17 @@ th {
 /* Detection mode selector styles */
 .detection-mode-selector {
     margin-bottom: 15px;
+    display: flex;
+    justify-content: center;
+    flex-shrink: 0; 
 }
 
 .mode-toggle {
-    display: flex;
-    background-color: var(--secondary-color-light);
+    display: inline-flex; 
+    background-color: #e9ecef; 
     border-radius: 5px;
     padding: 3px;
-    width: fit-content;
-    margin: 0 auto;
+    border: 1px solid #ccc;
 }
 
 .mode-toggle input[type="radio"] {
@@ -494,50 +438,36 @@ th {
     cursor: pointer;
     border-radius: 4px;
     transition: all 0.3s;
+    color: var(--text-dark);
 }
 
 .mode-toggle input[type="radio"]:checked + label {
     background-color: var(--secondary-color);
     color: white;
-}
-
-.coming-soon-message {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 300px;
-    color: var(--secondary-color);
-    background-color: rgba(52, 152, 219, 0.1);
-    border-radius: 5px;
-    border: 2px dashed var(--secondary-color);
-}
-
-.coming-soon-message i {
-    font-size: 48px;
-    margin-bottom: 15px;
-}
-
-.coming-soon-message p {
-    font-size: 18px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 /* Servo control styles */
 .servo-controls {
     display: flex;
     flex-wrap: wrap;
-    justify-content: space-between;
-    gap: 20px;
+    justify-content: space-around; 
+    gap: 20px; /* Augmenter un peu l'espace entre les servos */
     margin-top: 15px;
 }
 
 .servo-container {
-    flex: 1;
-    min-width: 150px;
+    flex: 1 1 130px; /* Base un peu plus grande pour accommoder le slider */
+    min-width: 130px;
     display: flex;
     flex-direction: column;
     align-items: center;
 }
+.servo-container.servo-slider-container { /* Conteneur spécifique pour le slider */
+    min-width: 180px; /* Plus large pour le slider */
+    flex-basis: 180px;
+}
+
 
 .servo-container h3 {
     font-size: 16px;
@@ -565,10 +495,24 @@ th {
     background-color: var(--primary-color);
 }
 
+/* NOUVEAUX STYLES POUR LE SERVO SLIDER */
+.servo-range-slider {
+    width: 100%;
+    margin: 8px 0;
+    accent-color: var(--secondary-color);
+}
+
+.servo-value-display {
+    font-size: 0.9em;
+    color: var(--text-dark);
+    margin-top: 4px;
+}
+
+
 /* Real-time detection styles */
-.detection-status {
+.detection-status { 
     position: absolute;
-    top: 40px;
+    top: 40px; 
     left: 10px;
     padding: 5px 10px;
     border-radius: 20px;
@@ -582,13 +526,14 @@ th {
 }
 
 .detection-status.inactive {
-    background-color: var(--warning-color);
+    background-color: var(--warning-color); 
 }
 
 .detection-controls {
     margin-top: 10px;
     display: flex;
     justify-content: center;
+    flex-shrink: 0; 
 }
 
 #toggle-detection-btn {
@@ -599,28 +544,30 @@ th {
     border-radius: 5px;
     cursor: pointer;
     transition: all 0.3s;
+    font-weight: bold;
 }
 
-#toggle-detection-btn.active {
+#toggle-detection-btn.active { 
     background-color: var(--danger-color);
 }
 
-#toggle-detection-btn:hover {
+#toggle-detection-btn:hover:not(.active) {
     background-color: var(--primary-color);
 }
 
 #toggle-detection-btn.active:hover {
-    background-color: var(--accent-color);
+    background-color: var(--accent-color); 
 }
 
 .loading-container {
     width: 100%;
-    height: 300px;
+    min-height: 300px; 
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     color: var(--secondary-color);
+    flex-grow: 1; 
 }
 
 .loading-spinner {
@@ -637,33 +584,88 @@ th {
     to { transform: rotate(360deg); }
 }
 
-/* Make space for both status indicators */
-.stream-container {
-    position: relative;
-    width: 100%;
-    height: 350px;
-    background-color: #333;
-    border-radius: 5px;
-    overflow: hidden;
-    margin-bottom: 10px;
+/* Split-screen view when detection is active */
+#realtime-view-wrapper.split-view {
+    display: flex; 
+    flex-direction: row; 
+    gap: 2%; 
+    flex-grow: 1; 
 }
 
-/* Add split-screen view when detection is active */
-.split-view .stream-container {
-    width: 49%;
-    display: inline-block;
+#realtime-view-wrapper.split-view .stream-container,
+#realtime-view-wrapper.split-view .result-container {
+    width: 49%; 
+    height: 100%; 
+}
+#realtime-view-wrapper.split-view .stream-container {
+    margin-bottom: 0; 
+}
+#realtime-view-wrapper.split-view .result-container {
+    margin-top: 0; 
+    display: flex !important; 
+    flex-direction: column;
 }
 
-.split-view .result-container {
-    width: 49%;
-    display: inline-block;
-    vertical-align: top;
-}
 
-#detection-result {
-    width: 100%;
-    height: 300px;
-    object-fit: contain;
-    border-radius: 5px;
-    background-color: #333;
+@media (max-width: 1024px) {
+    .main-content {
+        flex-direction: column;
+    }
+    
+    .left-panel, .right-panel {
+        width: 100%;
+        flex: none; 
+    }
+    .camera-feed {
+        min-height: auto; /* Permettre une hauteur plus flexible sur mobile */
+    }
+}
+@media (max-width: 768px) {
+    header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .direction-btn {
+        width: 50px;
+        height: 50px;
+        font-size: 20px;
+    }
+    .servo-controls {
+        justify-content: center; 
+    }
+    .servo-container { /* S'assurer que les conteneurs servo ont une taille raisonnable */
+        flex-basis: 120px;
+    }
+    .servo-container.servo-slider-container {
+        flex-basis: 100%; /* Le slider prend toute la largeur */
+        min-width: unset;
+    }
+
+    .servo-btn {
+        width: 45px;
+        height: 45px;
+        font-size: 18px;
+    }
+
+    .autonomous-mode-container .action-btn { /* Le bouton autonome prend toute la largeur disponible */
+        width: 100%;
+        min-width: unset;
+    }
+
+    #realtime-view-wrapper.split-view {
+        flex-direction: column; 
+    }
+    #realtime-view-wrapper.split-view .stream-container,
+    #realtime-view-wrapper.split-view .result-container {
+        width: 100%; 
+        height: 300px; 
+    }
+    #realtime-view-wrapper.split-view .stream-container {
+         margin-bottom: 10px; 
+    }
+    #realtime-view-wrapper.split-view .result-container {
+        margin-top: 0; 
+    }
 }
