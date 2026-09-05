@@ -9,7 +9,7 @@
 
 **SIANA Robot Interface** is the web interface and control stack for the SIANA inspection robot. It provides live robot teleoperation, servo control, ESP32-CAM streaming, and AI-powered defect detection using a YOLO model. The stack connects a browser UI to a Raspberry Pi controller via WebSockets, with a Node.js backend coordinating real-time commands and image processing.
 
-> Built by **Adam El Madani**
+<img src="demo/demo.gif">
 
 ---
 
@@ -156,6 +156,6 @@ SIANA-Robot-Interface/
 
 ---
 
-## License
+## Licence
 
-No license has been specified yet. If you want, add a `LICENSE` file to define reuse terms.
+Ce projet est sous licence **MIT** - voir le fichier [LICENSE](LICENSE) pour plus de détails.
